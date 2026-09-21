@@ -423,3 +423,97 @@ Phase 4A maintains:
 - 0 AI/ML frameworks
 
 All mock providers are deterministic reference implementations with no AI/ML runtime.
+
+---
+
+## 10. Phase 6: Cognitive Pattern Discovery & Governed Plasticity
+
+Phase 6 introduces deterministic, read-only candidate pattern discovery without autonomous learning or production mutation.
+
+### 10.1 Core Invariant
+
+```text
+Operator Output  ≠  Truth  ≠  Epistemic Acceptance  ≠  Decision  ≠  Authority  ≠  Production Mutation
+```
+
+All plasticity operators are strictly advisory. They examine historical cognitive experience and propose `CandidateLearningArtifact` structures. They MUST NOT:
+- mutate persistence,
+- mutate memory,
+- mutate models,
+- mutate rules,
+- mutate epistemic state,
+- or alter any production cognitive structures.
+
+### 10.2 Plasticity Operator Contract
+
+```text
+PlasticityOperator (Protocol)
+  ├── propose(context: MemoryContext) -> CandidateLearningArtifact
+```
+
+Operators receive a bounded `MemoryContext` snapshot and return a single `CandidateLearningArtifact`. The artifact carries:
+- `candidate_type`: PATTERN, ASSOCIATION, etc.
+- `proposed_change`: descriptive dictionary of observed structure
+- `rationale`: human-readable explanation
+- `confidence`: bounded in [0.0, 1.0]
+- `provenance`: deterministic provenance record
+
+### 10.3 Deterministic Operators
+
+```text
+DeterministicPatternOperator
+  ├── Identifies recurring event/subject patterns
+  ├── Groups experiences by event_type + subject_id
+  ├── Reports recurrence_count
+  └── NEVER infers causality, intent, meaning, or truth
+
+DeterministicAssociationOperator
+  ├── Detects repeated co-occurrence of distinct event types within episodes
+  ├── Explicitly represents ASSOCIATION, never CAUSATION
+  └── Example: BoostHigh co-occurs with HighLoad → does NOT become BoostHigh causes HighLoad
+
+DeterministicRecurrenceOperator
+  ├── Identifies repeated temporal patterns across experiences
+  ├── Reports occurrence_count, episode_count, median interval
+  └── Remains strictly descriptive. No prediction. No causal inference.
+```
+
+### 10.4 Operator Registry
+
+```text
+PlasticityOperatorRegistry (Protocol)
+  ├── register(record: OperatorRecord) -> None
+  ├── get(operator_id, version?) -> OperatorRecord | None
+  ├── list_operators(status?, operator_type?) -> list[OperatorRecord]
+  ├── list_versions(operator_id) -> list[OperatorRecord]
+  ├── set_lifecycle_status(operator_id, version, status) -> None
+  └── is_enabled(operator_id, version?) -> bool
+```
+
+Operators follow the same lifecycle as advanced providers:
+`DECLARED → REGISTERED → VALIDATED → AVAILABLE → ENABLED → DISABLED → SUSPENDED → RETIRED`
+
+### 10.5 Synthetic Domains
+
+Phase 6 validates plasticity across four synthetic domains:
+- **ERP**: InvoiceCreated, PaymentReceived co-occurrence
+- **Automotive**: BoostHigh, HighLoad, LowFlow temporal patterns
+- **Acoustics**: NoiseDetected, SilenceDetected associations
+- **Scientific**: MeasurementTaken recurrence, CalibrationPerformed
+
+### 10.6 Read-Only Guarantee
+
+```text
+Operator.propose(context)
+  ├── Reads: context.experiences, context.observations
+  ├── Returns: CandidateLearningArtifact
+  └── MUST NOT modify: context, MemoryStore, PersistenceStore, any production structure
+```
+
+### 10.7 Acceptance Criteria
+
+- 28 tests under `tests/plasticity/` (4 test files)
+- All tests pass with 0 external dependencies
+- No regressions in existing test suite (430 total passing)
+- Operators remain read-only and advisory-only
+- Deterministic outputs are reproducible

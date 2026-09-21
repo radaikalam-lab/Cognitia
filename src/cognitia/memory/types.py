@@ -54,6 +54,19 @@ class ConsolidationStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
+class OperatorLifecycleStatus(str, enum.Enum):
+    """Formal lifecycle progression of a plasticity operator."""
+
+    DECLARED = "declared"
+    REGISTERED = "registered"
+    VALIDATED = "validated"
+    AVAILABLE = "available"
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+    SUSPENDED = "suspended"
+    RETIRED = "retired"
+
+
 @dataclass(frozen=True)
 class MemoryQuery:
     """Domain-neutral query dimensions for selective memory retrieval."""
@@ -101,6 +114,21 @@ class CandidateLearningArtifact(CognitiveObject):
     confidence: float = 1.0
     provider: str = "plasticity_operator"
     model_version: str | None = None
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(source_type=SourceType.DETERMINISTIC_RULE)
+    )
+
+
+@dataclass(frozen=True)
+class OperatorRecord(CognitiveObject):
+    """Immutable record capturing identity, version, type, and lifecycle of a plasticity operator."""
+
+    operator_id: str = ""
+    operator_version: str = "1.0.0"
+    operator_type: str = "pattern_discovery"
+    is_deterministic: bool = True
+    lifecycle_status: OperatorLifecycleStatus = OperatorLifecycleStatus.DECLARED
+    registered_at: str = field(default_factory=current_utc_timestamp)
     provenance: ProvenanceRecord = field(
         default_factory=lambda: ProvenanceRecord(source_type=SourceType.DETERMINISTIC_RULE)
     )

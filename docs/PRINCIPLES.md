@@ -88,6 +88,18 @@ Activation           = Explicit Governance Operation
 * **Resource Declaration**: Providers declare required resources (network, GPU, external runtime, filesystem). The Gateway rejects execution if declared mandatory resources are unavailable.
 * **Zero Dependencies**: No external runtime dependencies, no network dependencies, and no AI/ML frameworks are introduced.
 
+### Invariant 13 — Plasticity Operators Are Read-Only and Advisory-Only
+> **Plasticity operators examine historical cognitive experience and propose candidate learning artifacts. They MUST NOT mutate any production cognitive structure.**
+
+```text
+Operator Output  ≠  Truth  ≠  Epistemic Acceptance  ≠  Decision  ≠  Authority  ≠  Production Mutation
+```
+
+* **Read-Only Access**: Operators receive a bounded `MemoryContext` snapshot. They read experiences and observations but MUST NOT modify memory, persistence, models, rules, epistemic state, or any production structure.
+* **Advisory-Only**: Candidate artifacts remain proposals. Promotion requires explicit epistemic evaluation and governance review.
+* **Deterministic**: All candidate generation is deterministic and reproducible. No stochastic or machine-learned inference is introduced.
+* **No Causation Inference**: Pattern and association operators describe recurrence and co-occurrence only. They MUST NOT infer causality, intent, meaning, or truth.
+
 ---
 
 ## 2. Epistemic Axioms

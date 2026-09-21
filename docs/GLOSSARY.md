@@ -133,3 +133,27 @@ Provider outputs (`CandidateReasoningArtifact`) are never truth, decisions, or a
 
 ### Provider Execution vs Epistemic Evaluation
 Provider execution produces candidate artifacts. Epistemic evaluation is a separate, explicit downstream step. They are never automatically coupled.
+
+### Plasticity Operator
+A deterministic, read-only cognitive operator that examines historical experience and proposes `CandidateLearningArtifact` structures describing observed patterns, associations, or recurrence. Operators are advisory-only and MUST NOT mutate production cognitive structures.
+
+### Candidate Learning Artifact
+The universal envelope for outputs emitted by plasticity operators. Carries `candidate_type`, `proposed_change`, `rationale`, `confidence`, and deterministic `provenance`. Remains advisory; promotion requires explicit governance review.
+
+### Operator Lifecycle Status
+The formal lifecycle state of a plasticity operator (`DECLARED`, `REGISTERED`, `VALIDATED`, `AVAILABLE`, `ENABLED`, `DISABLED`, `SUSPENDED`, `RETIRED`).
+
+### Operator Record
+An immutable record capturing the identity, version, operator type, determinism declaration, lifecycle status, and provenance of a plasticity operator.
+
+### Memory Context
+A bounded, immutable snapshot of cognitive memory assembled for operator examination. Contains experiences, observations, evidence, hypotheses, claims, reasoning traces, decisions, outcomes, and epistemic states.
+
+### Deterministic Pattern Discovery
+The identification of explicit recurring structures in historical experience (same event type, same subject, same state, repeated sequence, repeated interval). MUST NOT infer causality, intent, meaning, or truth.
+
+### Deterministic Association Discovery
+The detection of repeated co-occurrence of distinct event types within episodes. Explicitly represents ASSOCIATION, never CAUSATION.
+
+### Deterministic Recurrence Discovery
+The identification of repeated temporal patterns across experiences (occurrence count, episode count, median interval). Remains strictly descriptive with no prediction or causal inference.

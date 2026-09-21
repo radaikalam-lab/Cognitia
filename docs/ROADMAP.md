@@ -134,7 +134,28 @@
 
 ---
 
-## Phase 6: Distributed & Edge Topologies
+## Phase 6: Cognitive Pattern Discovery & Governed Plasticity (In Progress)
+* [x] Establish plasticity operator contract (read-only, advisory-only, no production mutation)
+* [x] Define `PlasticityOperator` protocol with `propose(context: MemoryContext) -> CandidateLearningArtifact`
+* [x] Implement `DeterministicPatternOperator` (recurring event/subject patterns)
+* [x] Implement `DeterministicAssociationOperator` (co-occurrence without causation)
+* [x] Implement `DeterministicRecurrenceOperator` (temporal recurrence statistics)
+* [x] Implement `InMemoryPlasticityOperatorRegistry` with lifecycle management
+* [x] Define `OperatorLifecycleStatus` enum (8 lifecycle states matching provider lifecycle)
+* [x] Define `OperatorRecord` immutable record
+* [x] Synthetic domain validation: ERP (InvoiceCreated, PaymentReceived)
+* [x] Synthetic domain validation: Automotive (BoostHigh, HighLoad, LowFlow)
+* [x] Synthetic domain validation: Acoustics (NoiseDetected, SilenceDetected)
+* [x] Synthetic domain validation: Scientific (MeasurementTaken, CalibrationPerformed)
+* [x] 28 new plasticity tests under `tests/plasticity/` (4 test files)
+* [x] Zero external runtime dependencies; zero network dependencies; zero AI/ML frameworks
+* [ ] Epistemic evaluation integration for candidate artifacts
+* [ ] Governance review and explicit promotion workflow
+* [ ] Phase 5A adapter integrations (Frappe, AcoustiForge, CellForge, Robotics)
+
+---
+
+## Phase 7: Distributed & Edge Topologies
 * Central Cognitive Server deployment runtime (`CentralCognitiveRuntime`)
 * Edge Cognitive Node runtime (`EdgeCognitiveRuntime`)
 * Asynchronous state synchronization and offline replay protocols

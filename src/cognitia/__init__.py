@@ -86,6 +86,17 @@ from cognitia.memory.consolidation import (
     InMemoryConsolidationService,
     PlasticityOperator,
 )
+from cognitia.memory.operators import (
+    DeterministicAssociationOperator,
+    DeterministicPatternOperator,
+    DeterministicRecurrenceOperator,
+)
+from cognitia.memory.registry import (
+    InMemoryPlasticityOperatorRegistry,
+    OperatorLifecycleStatus,
+    OperatorRecord,
+    PlasticityOperatorRegistry,
+)
 from cognitia.memory.store import (
     InMemoryMemoryStore,
     MemoryStore,
@@ -204,6 +215,9 @@ __all__ = [
     "ConsolidationResult",
     "ConsolidationService",
     "ConsolidationStatus",
+    "DeterministicAssociationOperator",
+    "DeterministicPatternOperator",
+    "DeterministicRecurrenceOperator",
     "ContextAssembler",
     "ContextCompression",
     "ContextConflict",
