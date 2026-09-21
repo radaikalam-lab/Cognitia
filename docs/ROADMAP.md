@@ -73,11 +73,56 @@
 
 ---
 
-## Phase 4: Cognitive Reasoning, Prediction & Simulation
-* Structured reasoning capabilities over focused attention items
-* Causal, counterfactual, inductive, and deductive reasoning providers
-* Prediction and simulation interfaces
-* Epistemic hypothesis evaluation and challenge derivation
+## Phase 4: Cognitive Reasoning (Completed)
+* [x] Establish immutable `ReasoningInput` snapshot semantics (isolation from live mutable stores)
+* [x] Implement modular `ReasoningStrategy` SPI protocol
+* [x] Implement `DeductiveReasoner` (deterministic rule evaluation, derivation steps, missing premise residuals)
+* [x] Implement `AbductiveReasoner` (candidate explanation generation, competing hypotheses, deterministic ranking)
+* [x] Implement `AnalogicalReasoner` (structural correspondence mapping, limitations, Non-Equivalence invariant)
+* [x] Implement `CausalReasoner` (explicit causal graphs/mechanisms, strict guardrails against temporal/correlational inference)
+* [x] Implement `CounterfactualReasoner` (deterministic transition rules under interventions, non-observed simulation)
+* [x] Implement `DeterministicReasoningEngine` orchestration layer
+* [x] Integrate reasoning into `LocalCognitiveRuntime` (`reason`, `reason_over_attention`)
+* [x] Preserve epistemic boundary (reasoning candidate generation != automatic epistemic state mutation)
+* [x] Enforce authority boundary (no production state mutation, no action execution)
+* [x] Multi-domain synthetic test validation (Automotive, ERP, Acoustics, Scientific Process)
+* [x] 100% test pass with zero warnings under `-W error`
+
+---
+
+## Phase 4A: Advanced Reasoning Provider Scaffold (Completed)
+* [x] Define `AdvancedCapabilityType` enum (8 capability classes)
+* [x] Define `ProviderLifecycleStatus` enum (8 lifecycle states)
+* [x] Define `ProposalLifecycleStatus` enum (7 proposal states)
+* [x] Define `ResourceRequirements` immutable dataclass
+* [x] Define `AdvancedProviderRecord` immutable/versioned identity
+* [x] Define `CandidateReasoningArtifact` universal provider output envelope
+* [x] New artifacts start epistemically `UNRESOLVED` and `PROPOSED`
+* [x] Define `ReasoningRequest` immutable request envelope
+* [x] Implement `AdvancedProviderRegistry` protocol + `InMemoryAdvancedProviderRegistry`
+* [x] Implement `ProviderGateway` + `InMemoryProviderGateway` with execution authorization
+* [x] Gateway does NOT automatically perform epistemic evaluation
+* [x] Model Registry is reused; no duplicate registries
+* [x] Provenance DAG is reused; no duplicate provenance systems
+* [x] Provider availability vs. activation distinction (`AVAILABLE` ≠ `ENABLED`)
+* [x] Provider versioning with immutable historical versions
+* [x] Scaffold `LLMReasoningProvider` + `MockLLMProvider`
+* [x] Scaffold `TinyMLReasoningProvider` + `MockTinyMLProvider`
+* [x] Scaffold `HypothesisGenerationProvider` + `MockHypothesisProvider`
+* [x] Scaffold `CausalInferenceProvider` + `MockCausalProvider`
+* [x] Scaffold `SemanticGraphProvider` + `MockSemanticGraphProvider`
+* [x] Scaffold `SimilarityProvider` + `MockSimilarityProvider`
+* [x] Scaffold `ReinforcementLearningProvider` + `MockRLProvider`
+* [x] Scaffold `ReasoningStrategyEvolutionProvider` + `MockStrategyEvolutionProvider`
+* [x] All mock providers are deterministic, synthetic, and contain no AI/ML framework
+* [x] Snapshot boundary verified (providers receive only immutable `ReasoningInput`)
+* [x] Authority boundary verified (no mutation, no execution, no live-store access)
+* [x] Epistemic separation verified (provider output ≠ epistemic state change)
+* [x] Resource gating verified (network, GPU, external runtime, filesystem)
+* [x] Disable gate verified (DISABLED/SUSPENDED/RETIRED providers cannot execute)
+* [x] Activation gating verified (REGISTERED → VALIDATED → AVAILABLE → ENABLED)
+* [x] 170 new Phase 4A tests; 338 total tests passing
+* [x] Zero external runtime dependencies; zero network dependencies; zero AI/ML frameworks
 
 ---
 

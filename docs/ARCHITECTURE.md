@@ -17,6 +17,7 @@ Cognitia provides domain-neutral, reusable cognitive and epistemic infrastructur
 │       Cognitia Core (ABI, Types, Serialization, Immutability)          │
 │       Cognitive Services (Epistemics, Experience, Reasoning, Models)   │
 │       Cognitive Memory Layer · Consolidation Pipeline                  │
+│       Cognitive Attention Layer · Cognitive Reasoning Engine           │
 │       CognitiveService Facade · LocalCognitiveRuntime                  │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Historical Substrate (Async)
@@ -53,7 +54,7 @@ Cognitia enforces a strict 4-tier conceptual separation:
 │                are durably stored and selectively retrieved            │
 ├────────────────────────────────────────────────────────────────────────┤
 │ 3. RUNTIME   = WHERE and HOW those services execute                    │
-│                (e.g., LocalCognitiveRuntime in Phase 0)                │
+│                (e.g., LocalCognitiveRuntime in Phase 0-4)              │
 ├────────────────────────────────────────────────────────────────────────┤
 │ 4. ADAPTER   = HOW an external domain connects and translates          │
 │                (Bidirectional transformation, outside Cognitia core)   │
@@ -77,7 +78,7 @@ Cognitia enforces a strict 4-tier conceptual separation:
          ▼               ▼               ▼                ▼              ▼
  ┌───────────────┐┌──────────────┐┌──────────────┐┌──────────────┐┌──────────────┐
  │  Experience   ││  Epistemic   ││  Reasoning   ││  Capability  ││    Model     │
- │    Service    ││   Service    ││   Service    ││   Registry   ││   Registry   │
+ │    Service    ││   Service    ││   Engine     ││   Registry   ││   Registry   │
  └───────┬───────┘└──────┬───────┘└──────┬───────┘└──────┬───────┘└──────┬───────┘
          │               │               │               │               │
          └───────────────┼───────────────┼───────────────┼───────────────┘
@@ -99,214 +100,124 @@ Cognitia enforces a strict 4-tier conceptual separation:
 
 ## 4. Plasticity-Inspired Cognitive Adaptation Loop
 
-Cognitia defines a controlled mechanism for artificial cognitive adaptation:
-
 ```text
-                         EXPERIENCE
-                             │
-                             ▼
-                        PERSISTENCE
-                             │
-                             ▼
-                      MEMORY RETRIEVAL
-                             │
-                             ▼
-                PLASTICITY OPERATOR (Laya / TinyML / Rules)
-                             │
-                             ▼
-                 CANDIDATE LEARNING ARTIFACT
-                             │
-                             ▼
-                    EPISTEMIC EVALUATION
-                             │
-                      ┌──────┴──────┐
-                      │             │
-                   REFUTED      SUPPORTED
-                      │             │
-                      ▼             ▼
-                 Historical   CONSOLIDATION
-                   Record           │
-                                    ▼
-                             VALIDATION GATE
-                                    │
-                                    ▼
-                           VERSION N+1 CREATED
-                                    │
-                                    ▼
-                             MODEL REGISTRY
-```
-
-### 4.1 Invariants of Cognitive Plasticity
-1. **$\text{Persistence} \neq \text{Memory} \neq \text{Learning} \neq \text{Consolidation} \neq \text{Authority}$**: Each layer maintains strict separation.
-2. **No Autonomous Production Weight Mutation**: Runtime experience never directly modifies active model weights. Adaptation produces candidate proposals that undergo epistemic evaluation and controlled consolidation into version $N+1$.
-3. **Versioned Plasticity**: Version $N$ remains immutable and historically retrievable when Version $N+1$ is registered.
-4. **Forgetting as Deprioritization**: Forgetting is an access/priority transformation (supersession, attenuation, retirement), never the destructive erasing of historical lineage.
-
----
-
-## 5. Biological Metaphor & Hive / Collective Cognition
-
-To aid intuitive reasoning about distributed cognitive roles, Cognitia uses a biological architectural metaphor:
-* **Ecosystem (Hive)**: The collective Cognitia deployment across edge nodes and central services.
-* **Coordinator (Queen-like)**: Central Cognitia service orchestrating model governance and long-term consolidation.
-* **Specialist Providers (Worker-like)**: Laya, tiny models, deterministic rules, and symbolic engines performing fast inferences and candidate pattern proposals.
-* **Collective Memory**: Persistent cognitive history preserving longitudinal experiences across nodes.
-* **Consolidation**: Hardening repeatedly corroborated patterns into stable, versioned models.
-
-> **Note**: This is an architectural analogy only, not a claim of biological neural equivalence.
-
----
-
-## 6. Provider Layer & Provider Architecture
-
-```text
-                    COGNITIA CORE
-                          │
-           ┌──────────────┴──────────────┐
-           │                             │
-      Core Contracts               Service Layer
-           │                             │
-           │                      CognitiveService
-           │                             │
-           ├──────────────┬──────────────┤
-           │              │              │
-    Capability SPI   Reasoning SPI   Model Registry
-           │              │              │
-           └──────────────┴──────────────┘
-                          │
-                   Provider Boundary (SPI)
-                          │
-             ┌────────────┼────────────┐
-             ▼            ▼            ▼
-           Laya      Rule Engine   Other Models
-          Provider    Provider      (TinyML/ML)
-             │            │            │
-             └────────────┴────────────┘
-                          │
-                   Cognitive Proposal (Advisory)
-                          │
-                   Authority Boundary
-                          │
-                   Domain Application
+                       ┌───────────────────────────────┐
+                       │     Consuming Application     │
+                       │   (AcoustiForge, FJH, etc.)   │
+                       └───────────────┬───────────────┘
+                                       │ 1. Telemetry / Observation
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │       Event Journal           │
+                       │    (Durable Substrate)        │
+                       └───────────────┬───────────────┘
+                                       │ 2. Asynchronous History
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │     Episodic Experience       │
+                       │           Model               │
+                       └───────────────┬───────────────┘
+                                       │ 3. Selective Memory Query
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │       Cognitive Memory        │
+                       │           Subsystem           │
+                       └───────────────┬───────────────┘
+                                       │ 4. Memory Context
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │      Plasticity Operator      │
+                       │   (Heuristics, Tiny ML, etc.) │
+                       └───────────────┬───────────────┘
+                                       │ 5. Candidate Learning Artifact
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │       Epistemic Service       │
+                       │   (Evaluation & Challenge)    │
+                       └───────────────┬───────────────┘
+                                       │ 6. Validation / Refutation
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │     Consolidation Service     │
+                       │  (Promotion into Model $N+1$) │
+                       └───────────────┬───────────────┘
+                                       │ 7. Register Model Version
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │        Model Registry         │
+                       │ (Versioned Cognitive Memory)  │
+                       └───────────────────────────────┘
 ```
 
 ---
 
-## 7. Phase 1: Frappe Adapter & Human-Governed Cognitive Intelligence
-
-Phase 1 introduces the first concrete domain adapter along with a domain-neutral **Human-Governed Cognitive Rule** subsystem.
+## 5. End-to-End Cognitive Pipeline
 
 ```text
-                    Frappe / ERPNext
-                           │
-                    Document Events
-                           │
-                           ▼
-                 ┌───────────────────┐
-                 │   Frappe Adapter  │
-                 └─────────┬─────────┘
-                           │
-                     Cognitia ABI
-                           │
-                           ▼
-                 ┌───────────────────┐
-                 │     Cognitia      │
-                 │                   │
-                 │ Observation       │
-                 │ Experience        │
-                 │ Persistence       │
-                 │ Memory            │
-                 │ Epistemics        │
-                 │ Reasoning         │
-                 │ Rules             │
-                 └─────────┬─────────┘
-                           │
-                    Advisory Decision
-                           │
-                           ▼
-                    Frappe / Human
+                 ┌───────────────┐
+                 │  Observation  │
+                 └───────┬───────┘
+                         ↓
+                 ┌───────────────┐
+                 │  Persistence  │
+                 └───────┬───────┘
+                         ↓
+                 ┌───────────────┐
+                 │    Memory     │
+                 └───────┬───────┘
+                         ↓
+                 ┌───────────────┐
+                 │    Context    │
+                 └───────┬───────┘
+                         ↓
+                 ┌───────────────┐
+                 │  Enrichment   │
+                 └───────┬───────┘
+                         ↓
+                 ┌───────────────┐
+                 │   Attention   │
+                 └───────┬───────┘
+                         ↓
+           ╔═══════════════════════════╗
+           ║ IMMUTABLE COGNITIVE       ║
+           ║ SNAPSHOT (ReasoningInput) ║
+           ╚═════════════╤═════════════╝
+                         ↓
+                 ┌───────────────┐
+                 │   Reasoning   │
+                 │   Engine      │
+                 └───────┬───────┘
+                         ↓
+              ┌─────────────────────┐
+              │ ReasoningTrace      │
+              │ Candidate Results   │
+              │ Residuals           │
+              └──────────┬──────────┘
+                         ↓
+                 ┌───────────────┐
+                 │   Epistemic   │
+                 │   Evaluation  │
+                 └───────┬───────┘
+                         ↓
+                 ┌───────────────┐
+                 │   Advisory    │
+                 │   Cognition   │
+                 └───────────────┘
+
+                         ║
+                         ║  HARD AUTHORITY BOUNDARY
+                         ║
+                         ↓
+
+                 ┌───────────────┐
+                 │    Domain     │
+                 │   Authority   │
+                 └───────────────┘
 ```
-
-### 7.1 Three Plasticity Paths
-
-Cognitia recognizes that artificial cognitive plasticity does not require autonomous machine learning. Plasticity evolves across three distinct paths:
-
-```text
-                 COGNITIVE PLASTICITY
-                         │
-          ┌──────────────┼───────────────┐
-          │              │               │
-          ▼              ▼               ▼
-       HUMAN          ASSISTED         FUTURE
-      GUIDANCE        LEARNING        AUTONOMOUS
-          │              │               │
-          ▼              ▼               ▼
-     Human rule      Model proposal    Model proposal
-     / revision      + human review    + governance
-          │              │               │
-          └──────────────┼───────────────┘
-                         ▼
-                   Consolidation
-                         │
-                         ▼
-                  Versioned Cognition
-```
-
-1. **Human-Guided Plasticity**: A human observes operational evidence, formulates a heuristic or business insight, and authors/updates an immutable `CognitiveRule` ($N \to N+1$).
-2. **Machine-Assisted Plasticity**: A TinyML model, Laya, or rule operator processes memory to propose a `CandidateLearningArtifact`, which undergoes human/governance review prior to consolidation.
-3. **Governed Autonomous Plasticity**: Autonomous candidate generation with epistemic validation and automated consolidation under strict constraint envelopes (future capability).
-
-### 7.2 Core Adapter & Rule Invariants
-
-* **Core Independence**: Cognitia Core has ZERO dependencies on Frappe, ERPNext, AcoustiForge, or FJH.
-* **Non-Authoritative Advisories**: Cognitia outputs read-only advisories with explicit `is_authoritative: False`. It never mutates domain documents or business states.
-* **Immutability of Rule Versions**: Published cognitive rules cannot be modified in place. Revisions generate Version $N+1$ linked by parent lineage.
-* **Anti-Silent-Mutation**: Runtime observations and model inferences cannot silently alter active rules or weights.
 
 ---
 
-## 8. Phase 2: Cognitive Observation & Context Layer
-
-Phase 2 establishes the **Cognitive Context** layer positioned above Persistence and Memory.
-
-```text
-External Application / Environment
-              │
-              ▼
-        Observation (What happened)
-              │
-              ▼
-       Context Assembly (What was relevant around it)
-              │
-       ┌──────┼────────┐
-       ▼      ▼        ▼
-    Memory  Rules   Epistemics
-       │      │        │
-       └──────┼────────┘
-              ▼
-       Cognitive Context
-              │
-              ▼
-    Future Attention / Reasoning
-```
-
-### 8.1 Observation vs Context Distinction
-
-$$\text{Observation} = \text{What happened (discrete occurrence)}$$
-$$\text{Context} = \text{What was relevant around what happened (situational assembly)}$$
-
-Context is NOT a conclusion, causal assertion, or authoritative decision. It represents the multi-dimensional cognitive situation surrounding an observation.
-
-### 8.2 Context Dimensions & Relevance
-
-* **Temporal Context**: Preceding and succeeding observations within a configured temporal window, capturing temporal deltas without assuming causality.
-* **Subject & Episode Context**: Entity and episodic continuity grouping related historical observations and experiences.
-* **Historical Memory Context**: Contextual retrieval of past experiences, claims, and evidence via the Memory layer.
-* **Epistemic Context**: Explicit evaluation statuses preserved without lossy flattening.
-* **Rule Context**: Identification of active cognitive rules matching observation scope and predicates.
-* **Deterministic Selection**: Ordering and selection are 100% deterministic ($\text{Relevance Score} \to \text{Timestamp} \to \text{UUID}$).
-
-### 8.3 Phase 3A: Cognitive Context Enrichment
+## 6. Phase 3A: Cognitive Context Enrichment
 
 Phase 3A enriches `CognitiveContext` with structural and descriptive intelligence without turning Context into Reasoning.
 
@@ -327,59 +238,188 @@ Context
 └── structural compression (summary statistics without prioritization)
 ```
 
-#### Core Context Enrichment Invariants:
-1. **Structural vs Semantic Intelligence**: Context can become structurally intelligent without becoming semantically intelligent. Context describes observed relationships and structure; Reasoning interprets them.
-2. **Non-Causality**: Temporal sequence does not imply causality ($A \to B$ does not mean $A \text{ caused } B$).
-3. **Descriptive, Non-Diagnostic**: Contextual deviation indicates descriptive divergence relative to historical baselines; it does NOT imply fault, failure, or diagnosis.
-4. **State Reconstruction Grounding**: State reconstruction requires explicit observation semantics and represents `UNKNOWN` when unobserved; it never guesses missing state.
-5. **Epistemic Tension Preservation**: Coexisting contradictory evidence (`SUPPORT` and `REFUTE`) is mapped and preserved without picking a winner or estimating truth probability.
-6. **Compression vs Attention**: Context compression summarizes structure; Attention selects task importance. Compression never duplicates Attention.
-
 ---
 
-## 9. Phase 3: Cognitive Attention Layer
-
-Phase 3 establishes the **Cognitive Attention** layer positioned between Context Assembly and Cognitive Reasoning.
-
-```text
-Observation (What happened)
-      │
-      ▼
-Persistence (Durable history)
-      │
-      ▼
-Memory (Historical retrieval)
-      │
-      ▼
-Context (Situational assembly)
-      │
-      ▼
-Attention (Task-dependent focus & prioritization)
-      │
-      ▼
-Reasoning (Inferential derivation & evaluation)
-      │
-      ▼
-Planning / Epistemic Review / Decision Advisories
-```
-
-### 9.1 Context vs Attention Distinction
+## 7. Phase 3: Cognitive Attention Layer
 
 $$\text{Context} = \text{What information is relevant around the current observation}$$
 $$\text{Attention} = \text{What information deserves cognitive focus for the current task}$$
 
-$$\text{Context} \neq \text{Attention}$$
+1. **Non-Duplication**: Attention prioritizes Context items via immutable references (`item_id`).
+2. **Prioritization, NOT Truth Estimation**: `attention_score` is strictly a deterministic prioritization value used to allocate attention budget.
+3. **Preservation of Epistemic Tension**: Attention does NOT eliminate contradictory evidence (`SUPPORT` vs `REFUTE`).
+4. **Deterministic Budget & Stable Tie-Breaking**: $(\text{attention\_score} \downarrow, \text{time\_delta} \downarrow, \text{timestamp} \downarrow, \text{item\_id} \uparrow)$.
 
-> **Context assembles.**
-> **Attention prioritizes.**
-> **Attention MUST NOT become reasoning.**
+---
 
-### 9.2 Core Attention Invariants
+## 8. Phase 4: Cognitive Reasoning Layer
 
-1. **Non-Duplication**: Attention prioritizes Context items via immutable references (`context_item_id`, `item_id`); it does NOT duplicate Context, Persistence, or Memory objects.
-2. **Prioritization, NOT Truth Estimation**: `attention_score` is strictly a deterministic engineering prioritization value used to allocate attention budget. It is NOT confidence, probability, truth, epistemic certainty, or causal strength.
-3. **Preservation of Epistemic Tension**: Attention does NOT eliminate contradictory evidence (e.g. `SUPPORT` vs `REFUTE`). It preserves epistemic tension for downstream Reasoning and Epistemic evaluation rather than prematurely resolving it.
-4. **Non-Execution**: Attention may prioritize active rules or historical memories, but it never executes rules, mutates memory, or triggers actions.
-5. **Deterministic Budget & Stable Tie-Breaking**: Given identical input context and query, results are 100% reproducible. Identical scores tie-break strictly by $(\text{attention\_score} \downarrow, \text{timestamp} \downarrow, \text{item\_id} \uparrow)$.
-6. **Snapshot Immutability & Provenance**: Attention results are deeply frozen snapshots linked to upstream `CognitiveContext` through Cognitia's provenance system.
+Phase 4 introduces a deterministic, explainable, provenance-preserving, provider-agnostic cognitive reasoning layer.
 
+### 8.1 Absolute Invariant
+$$\text{Reasoning Output} \neq \text{Truth} \neq \text{Epistemic Status} \neq \text{Decision} \neq \text{Authority}$$
+
+Reasoning produces candidate conclusions, hypotheses, explanatory alternatives, structural analogies, causal hypotheses, counterfactual scenarios, and explicit residuals. It does NOT declare truth, directly alter epistemic status, mutate production state, or execute actions.
+
+### 8.2 Snapshot Principle
+> **Reasoning is a transformation of an immutable cognitive snapshot (`ReasoningInput`), not a query against live mutable stores.**
+
+Once `ReasoningInput` is created, mutations to underlying stores (persistence, memory, rules, models) do NOT alter the reasoning input or output.
+
+### 8.3 Modular Reasoning Strategies
+```text
+ReasoningStrategy (Protocol)
+ ├── DeductiveReasoner        (Rule matching, explicit derivation steps, missing premise residuals)
+ ├── AbductiveReasoner        (Candidate explanation generation, competing hypotheses, deterministic ranking)
+ ├── AnalogicalReasoner       (Structural correspondence mapping, explicit limitations, Non-Equivalence)
+ ├── CausalReasoner           (Evaluates explicit causal graphs/mechanisms; strict non-inference guardrails)
+ └── CounterfactualReasoner   (Deterministic transition rules under intervention; non-observed hypothetical)
+```
+
+### 8.4 Strict Causal Guardrails
+$$\text{Temporal Order } (A \text{ BEFORE } B) \neq \text{Causality}$$
+$$\text{Correlation } (A \text{ CORRELATES\_WITH } B) \neq \text{Causality}$$
+
+Causal reasoning operates strictly and only on explicitly supplied causal graphs, mechanisms, or causal rules. In the absence of an explicit causal model, causality inference is rejected and recorded as a missing model residual.
+
+---
+
+## 9. Phase 4A: Advanced Reasoning Provider Scaffold
+
+Phase 4A establishes provider-neutral scaffolding for future advanced cognitive capabilities without implementing autonomous AI. The deterministic Cognitia substrate must remain fully functional when every advanced provider is absent or disabled.
+
+### 9.1 Capability Classes
+
+```text
+AdvancedCapabilityType
+ ├── LLM_REASONING             (Scaffold only)
+ ├── TINYML_REASONING          (Scaffold only)
+ ├── HYPOTHESIS_GENERATION     (Scaffold only)
+ ├── CAUSAL_INFERENCE          (Scaffold only)
+ ├── SEMANTIC_GRAPH            (Scaffold only)
+ ├── VECTOR_RETRIEVAL          (Scaffold only)
+ ├── REINFORCEMENT_LEARNING    (Scaffold only)
+ └── SELF_MODIFYING_REASONING  (Scaffold only)
+```
+
+### 9.2 Provider Lifecycle
+
+```text
+ProviderLifecycleStatus
+ ├── DECLARED    (Known, no implementation present)
+ ├── REGISTERED  (Metadata registered)
+ ├── VALIDATED   (Contract/version passed validation)
+ ├── AVAILABLE   (Implementation and resources present)
+ ├── ENABLED     (Explicitly permitted to execute)
+ ├── DISABLED    (Exists but execution prohibited)
+ ├── SUSPENDED   (Previously enabled, temporarily prohibited)
+ └── RETIRED     (Permanently inactive)
+```
+
+Critical distinction:
+
+```text
+AVAILABLE ≠ ENABLED
+```
+
+### 9.3 Core Invariant
+
+```text
+Provider Output  ≠  Truth  ≠  Epistemic Acceptance  ≠  Decision  ≠  Authority
+```
+
+### 9.4 Advanced Provider Architecture
+
+```text
+                         COGNITIA CORE
+                              │
+             ┌────────────────┴────────────────┐
+             │                                 │
+     Deterministic Cognition           Advanced Provider Layer
+             │                                 │
+ Observation / Persistence              ┌──────┼──────────┐
+ Memory / Context                       │      │          │
+ Enrichment / Attention               LLM   TinyML    Similarity
+ Snapshot / Reasoning                   │      │          │
+             │                          ├──────┼──────────┤
+             │                       Hypothesis  Causal
+             │                          │         │
+             │                          ├─────────┤
+             │                         Graph      RL
+             │                          │         │
+             │                          └────┬────┘
+             │                               │
+             │                         Evolution
+             │                               │
+             └───────────────┬───────────────┘
+                             ↓
+                  Candidate Reasoning Artifact
+                             ↓
+                    Epistemic Evaluation
+                             ↓
+                       Governance
+                             ↓
+                       Consolidation
+                             ↓
+                  Versioned Cognition
+                             ↓
+                       Advisory Output
+                             ↓
+                    Domain Authority
+```
+
+### 9.5 Provider Gateway
+
+The `ProviderGateway` enforces execution authorization:
+
+```text
+Gateway
+  ├── provider exists?         → REJECT if missing
+  ├── version exists?          → REJECT if missing
+  ├── status == ENABLED?       → REJECT otherwise
+  ├── capability supported?    → REJECT if not declared
+  ├── resources satisfied?     → REJECT if unavailable
+  ├── input snapshot valid?    → REJECT if mismatch
+  └── execute provider         → CandidateReasoningArtifact
+```
+
+The Gateway does NOT perform epistemic evaluation. Epistemic evaluation is an explicit, separate downstream step.
+
+### 9.6 Proposal vs Activation
+
+```text
+ProposalLifecycleStatus
+ ├── PROPOSED     (Candidate generated by provider)
+ ├── VALIDATED    (Contract/format validated)
+ ├── APPROVED     (Governance approved)
+ ├── ACTIVATABLE  (Ready for explicit activation)
+ ├── ACTIVATED    (Explicitly activated)
+ ├── REJECTED     (Explicitly rejected)
+ └── RETIRED      (Permanently inactive)
+```
+
+Activation must be an explicit governance operation. A candidate never becomes active merely because a provider generated it.
+
+### 9.7 Snapshot Boundary
+
+Providers receive only a bounded immutable `ReasoningInput`. Providers must NOT receive unrestricted references to:
+
+- `PersistenceStore`
+- `MemoryStore`
+- `RuleStore`
+- `ModelRegistry`
+- `EpistemicService`
+- `LocalCognitiveRuntime`
+- Authority Plane
+- Domain Application
+- Actuators
+
+### 9.8 Zero Dependencies
+
+Phase 4A maintains:
+- Python >= 3.12
+- 0 external runtime dependencies
+- 0 network dependencies
+- 0 AI/ML frameworks
+
+All mock providers are deterministic reference implementations with no AI/ML runtime.

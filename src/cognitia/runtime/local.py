@@ -6,9 +6,9 @@ persistence substrates, memory layers, and reference capability providers.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping, Sequence
 
-from cognitia.abi.types import Decision, Observation
+from cognitia.abi.types import CognitiveObject, Decision, Observation
 from cognitia.attention.engine import (
     AttentionEngine,
     DeterministicAttentionEngine,
@@ -57,11 +57,24 @@ from cognitia.persistence.store import (
 )
 from cognitia.reasoning.capability import (
     DeterministicMockReasoner,
+    EngineReasoningCapability,
     ReasoningCapability,
 )
-from cognitia.reasoning.types import ReasoningMode, ReasoningTrace
+from cognitia.reasoning.engine import (
+    DeterministicReasoningEngine,
+    ReasoningEngine,
+)
+from cognitia.reasoning.types import (
+    ReasoningInput,
+    ReasoningMode,
+    ReasoningResult,
+    ReasoningTrace,
+)
+from cognitia.recall.engine import InMemoryRecallEngine, RecallEngine
+from cognitia.recall.types import RecallQuery, RecallResult
 from cognitia.rules.capability import RuleEvaluationCapability
 from cognitia.rules.store import InMemoryRuleStore, RuleStore
+from cognitia.rules.types import CognitiveRule
 from cognitia.service.facade import (
     CognitiveService,
     ExperienceService,
@@ -70,7 +83,7 @@ from cognitia.service.facade import (
 
 
 class LocalCognitiveRuntime:
-    """Local, in-process runtime managing service assembly, persistence, memory, context, attention, and cognitive lifecycle."""
+    """Local, in-process runtime managing service assembly, persistence, memory, context, attention, reasoning, and cognitive lifecycle."""
 
     def __init__(
         self,
@@ -84,6 +97,7 @@ class LocalCognitiveRuntime:
         rule_store: RuleStore | None = None,
         context_assembler: ContextAssembler | None = None,
         attention_engine: AttentionEngine | None = None,
+        reasoning_engine: ReasoningEngine | None = None,
     ) -> None:
         self._epistemics = epistemic_service or InMemoryEpistemicService()
         self._experience = experience_service or InMemoryExperienceService()
@@ -100,11 +114,17 @@ class LocalCognitiveRuntime:
             epistemic_service=self._epistemics,
         )
         self._attention_engine = attention_engine or DeterministicAttentionEngine()
+        self._reasoning_engine = reasoning_engine or DeterministicReasoningEngine()
+        self._recall_engine = InMemoryRecallEngine(
+            persistence_store=self._persistence,
+            memory_store=self._memory,
+        )
 
         # Bootstrap default deterministic reference providers if not already present
         if not self._capabilities.list_all():
             self._capabilities.register(DeterministicMockDecisionProvider())
             self._capabilities.register(DeterministicMockReasoner())
+            self._capabilities.register(EngineReasoningCapability(engine=self._reasoning_engine))
             self._capabilities.register(RuleEvaluationCapability(rule_store=self._rules))
 
     @property
@@ -147,6 +167,27 @@ class LocalCognitiveRuntime:
     def attention_engine(self) -> AttentionEngine:
         return self._attention_engine
 
+    @property
+    def reasoning_engine(self) -> ReasoningEngine:
+        return self._reasoning_engine
+
+    @property
+    def recall_engine(self) -> RecallEngine:
+        return self._recall_engine
+
+    def recall(self, query: RecallQuery) -> RecallResult:
+        """Execute deterministic cognitive recall over persisted cognitive objects.
+
+        Recall is read-only, offline, snapshot-safe, and provider-independent.
+        It does not perform attention, reasoning, learning, truth evaluation,
+        or causality inference.
+        """
+        return self._recall_engine.recall(query)
+
+    def recall_with_trace(self, query: RecallQuery) -> tuple[RecallResult, RecallTrace]:
+        """Execute recall and return both results and execution trace."""
+        return self._recall_engine.recall_with_trace(query)
+
     def assemble_context(
         self,
         observation: Observation,
@@ -162,6 +203,42 @@ class LocalCognitiveRuntime:
     ) -> AttentionResult:
         """Focus and prioritize cognitive attention over an assembled CognitiveContext."""
         return self._attention_engine.focus(context, query)
+
+    def reason(
+        self,
+        reasoning_input: ReasoningInput,
+    ) -> tuple[ReasoningTrace, ReasoningResult]:
+        """Execute reasoning over an immutable ReasoningInput snapshot."""
+        return self._reasoning_engine.reason(reasoning_input)
+
+    def reason_over_attention(
+        self,
+        context: CognitiveContext,
+        attention_result: AttentionResult | None = None,
+        mode: ReasoningMode = ReasoningMode.DEDUCTION,
+        premises: Sequence[CognitiveObject] | None = None,
+        rules: Sequence[CognitiveRule] | None = None,
+        constraints: Mapping[str, Any] | None = None,
+        hypothetical_interventions: Mapping[str, Any] | None = None,
+        causal_graph: Sequence[tuple[str, str, str]] | None = None,
+        analogy_source: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> tuple[ReasoningTrace, ReasoningResult]:
+        """Convenience method to construct snapshot and execute reasoning over context + attention."""
+        active_rules = rules if rules is not None else self._rules.list_active()
+        snapshot = self._reasoning_engine.build_snapshot(
+            context=context,
+            attention_result=attention_result,
+            mode=mode,
+            premises=premises,
+            rules=active_rules,
+            constraints=constraints,
+            hypothetical_interventions=hypothetical_interventions,
+            causal_graph=causal_graph,
+            analogy_source=analogy_source,
+            metadata=metadata,
+        )
+        return self._reasoning_engine.reason(snapshot)
 
     def request_decision(
         self,
