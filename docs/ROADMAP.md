@@ -29,16 +29,59 @@
 
 ---
 
-## Phase 2: Cognitive Engine, Providers & Persistence Services
-* Long-term episodic and semantic memory storage abstractions on top of Persistence Plane
-* Durable local storage backends (`SQLitePersistenceStore`, append-only local log files)
-* High-performance serialization adapters (Arrow / Protobuf options alongside JSON ABI)
-* Model registry versioning and calibration lifecycle manager
-* Offline model evolution pipelines and governance review tooling
+## Phase 2: Cognitive Observation & Context (Completed)
+* [x] Establish Cognitive Context contract (`contracts/context-contract.md`)
+* [x] Define domain-neutral `CognitiveContext`, `ContextItem`, `TemporalContext`, and `RelevanceReason`
+* [x] Implement deterministic context assembly engine (`DeterministicContextAssembler`)
+* [x] Integrate context assembly across Persistence, Memory, Cognitive Rules, and Epistemics
+* [x] Preserve strict non-causality from temporal proximity alone
+* [x] Multi-domain synthetic validation (ERP-like, AcoustiForge-like, FJH-like)
+* [x] Ensure zero external runtime dependencies and full offline operation
+* [x] Maintain 100% test pass with zero warnings under `-W error`
 
 ---
 
-## Phase 3: Adapters & Integrations
+## Phase 3: Cognitive Attention (Completed)
+* [x] Establish Cognitive Attention contract (`contracts/attention-contract.md`)
+* [x] Define lightweight immutable `AttentionQuery`, `AttentionItem`, `AttentionReason`, and `AttentionResult`
+* [x] Implement deterministic attention engine (`DeterministicAttentionEngine`) with budget enforcement
+* [x] Implement stable tie-breaking ($\text{attention\_score} \downarrow, \text{timestamp} \downarrow, \text{item\_id} \uparrow$)
+* [x] Integrate attention engine into `LocalCognitiveRuntime.focus_context`
+* [x] Preserve epistemic tension and contradictory evidence without silent suppression
+* [x] Non-authority verification (no rule execution, no decision generation, no memory/persistence mutation)
+* [x] Multi-domain synthetic validation (ERP-like, AcoustiForge-like, FJH-like)
+* [x] 100% test pass with zero warnings under `-W error`
+
+---
+
+## Phase 3A: Cognitive Context Enrichment (Completed)
+* [x] Modular enricher architecture (`src/cognitia/context/enrichers/`)
+* [x] Temporal relationships and interval deltas (`BEFORE`, `AFTER`, `CONCURRENT`, `INTERVAL`)
+* [x] Entity & context neighbourhood (`SAME_SUBJECT`, `SAME_EPISODE`, `SAME_SOURCE`, `SHARED_PROVENANCE`)
+* [x] Observable state reconstruction (`latest`, `previous`, `first`, `unknown`, `conflicted`)
+* [x] Event sequence context (chronological ordering, relative positions, deltas)
+* [x] Recurrence statistics (counts, intervals, median interval, latest interval)
+* [x] Deterministic descriptive aggregates & sample standard deviation convention
+* [x] Historical baselines & contextual deviations (`ABOVE_HISTORICAL_RANGE`, `BELOW_HISTORICAL_RANGE`, `RAPID_CHANGE`)
+* [x] Bounded cross-source correlation with explicit explanation basis
+* [x] Bounded provenance neighbourhood lineage mapping
+* [x] Epistemic tension mapping (coexisting `SUPPORT` and `REFUTE` evidence preserved)
+* [x] Context conflict preservation (concurrent observational divergence)
+* [x] Context compression (structural summarization without prioritization)
+* [x] Multi-domain synthetic validation (ERP, AcoustiForge, FJH, Automotive)
+* [x] 100% test pass with zero warnings under `-W error`
+
+---
+
+## Phase 4: Cognitive Reasoning, Prediction & Simulation
+* Structured reasoning capabilities over focused attention items
+* Causal, counterfactual, inductive, and deductive reasoning providers
+* Prediction and simulation interfaces
+* Epistemic hypothesis evaluation and challenge derivation
+
+---
+
+## Phase 5: Adapters & Integrations
 * Reference domain adapter for AcoustiForge
 * Reference domain adapter for CellForge
 * Reference domain adapter for Autonomous Robotics / Swarm telemetry
@@ -46,7 +89,7 @@
 
 ---
 
-## Phase 4: Distributed & Edge Topologies
+## Phase 6: Distributed & Edge Topologies
 * Central Cognitive Server deployment runtime (`CentralCognitiveRuntime`)
 * Edge Cognitive Node runtime (`EdgeCognitiveRuntime`)
 * Asynchronous state synchronization and offline replay protocols

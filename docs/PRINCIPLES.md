@@ -60,6 +60,29 @@ $$\text{Persistence} \neq \text{Memory} \neq \text{Learning} \neq \text{Consolid
 * Advisories produced by Cognitia are strictly non-authoritative (`is_authoritative = False`) and cannot mutate application state, accounting ledgers, prices, stock, or workflows.
 * Autonomous machine learning is a future capability and is not required for Cognitia to exhibit controlled cognitive plasticity.
 
+### Invariant 9 — Observation vs Context Assembly & Enrichment
+> **Observation records an occurrence. Context assembles and enriches the structural situation relevant to that occurrence.**
+
+$$\text{Persistence} \neq \text{Memory} \neq \text{Context} \neq \text{Attention} \neq \text{Reasoning} \neq \text{Planning} \neq \text{Authority}$$
+
+* **Structural vs Semantic Intelligence**: Context can become structurally intelligent without becoming semantically intelligent. Context describes observed relationships and structure; Reasoning interprets them.
+* **Non-Causality**: Temporal sequence and interval relations do NOT imply physical or logical causality ($A \to B$ does not mean $A \text{ caused } B$).
+* **Descriptive, Non-Diagnostic**: Contextual deviation indicates descriptive divergence relative to historical baselines; it does NOT imply fault, failure, or diagnosis.
+* **State Reconstruction Grounding**: State reconstruction requires explicit observation semantics and represents `UNKNOWN` when unobserved; it never guesses missing state.
+* **Epistemic Tension Preservation**: Coexisting contradictory evidence (`SUPPORT` and `REFUTE`) is mapped and preserved without picking a winner or estimating truth probability.
+* **Compression vs Attention**: Context compression summarizes structure; Attention selects task importance. Compression never duplicates Attention.
+* **Context snapshots are immutable** once assembled and carry complete composite provenance.
+
+### Invariant 10 — Context vs Attention Prioritization
+> **Context assembles what was relevant around an observation; Attention prioritizes what deserves cognitive focus for a specific task.**
+
+$$\text{Persistence} \neq \text{Memory} \neq \text{Context} \neq \text{Attention} \neq \text{Reasoning} \neq \text{Planning} \neq \text{Authority}$$
+
+* **Prioritization $\neq$ Truth Estimation**: `attention_score` is strictly a deterministic engineering priority, not confidence, truth, or epistemic certainty.
+* **Preservation of Epistemic Tension**: Attention does NOT resolve contradictions or suppress refuted/challenged evidence; it preserves epistemic tension for Reasoning.
+* **Non-Execution & Non-Reasoning**: Attention focuses and filters; it does NOT execute rules, make decisions, plan actions, or infer causality.
+* **Attention $\neq$ Neural Attention**: In Cognitia, Attention is an explainable, deterministic cognitive prioritization abstraction over assembled context, not a transformer self-attention mechanism.
+
 ---
 
 ## 2. Epistemic Axioms

@@ -12,6 +12,16 @@ from cognitia.abi.types import (
     Observation,
     Outcome,
 )
+from cognitia.attention.engine import (
+    AttentionEngine,
+    DeterministicAttentionEngine,
+)
+from cognitia.attention.types import (
+    AttentionItem,
+    AttentionQuery,
+    AttentionReason,
+    AttentionResult,
+)
 from cognitia.capabilities.base import (
     BaseCapability,
     CapabilityDescriptor,
@@ -21,6 +31,34 @@ from cognitia.capabilities.base import (
 from cognitia.capabilities.registry import (
     CapabilityRegistry,
     InMemoryCapabilityRegistry,
+)
+from cognitia.context.engine import (
+    ContextAssembler,
+    DeterministicContextAssembler,
+)
+from cognitia.context.types import (
+    AggregateContext,
+    CognitiveContext,
+    ContextCompression,
+    ContextConflict,
+    ContextDeviation,
+    ContextItem,
+    ContextQuery,
+    CorrelationReason,
+    CrossSourceCorrelation,
+    DeviationType,
+    EntityRelation,
+    EntityRelationType,
+    EpistemicTension,
+    ProvenanceNeighbourhood,
+    RecurrenceContext,
+    RelevanceReason,
+    SequenceContext,
+    StateReconstruction,
+    StateVariable,
+    TemporalContext,
+    TemporalRelation,
+    TemporalRelationType,
 )
 from cognitia.epistemic.service import (
     EpistemicService,
@@ -114,6 +152,11 @@ __version__ = "0.1.0"
 __all__ = [
     "SCHEMA_VERSION_V1",
     "Action",
+    "AttentionEngine",
+    "AttentionItem",
+    "AttentionQuery",
+    "AttentionReason",
+    "AttentionResult",
     "BaseCapability",
     "CandidateLearningArtifact",
     "CandidateType",
@@ -122,6 +165,7 @@ __all__ = [
     "CapabilityType",
     "Challenge",
     "Claim",
+    "CognitiveContext",
     "CognitiveEvent",
     "CognitiveEventType",
     "CognitiveObject",
@@ -131,8 +175,13 @@ __all__ = [
     "ConsolidationResult",
     "ConsolidationService",
     "ConsolidationStatus",
+    "ContextAssembler",
+    "ContextItem",
+    "ContextQuery",
     "Decision",
     "DecisionCapability",
+    "DeterministicAttentionEngine",
+    "DeterministicContextAssembler",
     "DeterministicSerializer",
     "EpistemicNode",
     "EpistemicService",
@@ -171,11 +220,13 @@ __all__ = [
     "ReasoningMode",
     "ReasoningStep",
     "ReasoningTrace",
+    "RelevanceReason",
     "Residual",
     "RuleEvaluationCapability",
     "RuleStatus",
     "RuleStore",
     "SourceType",
+    "TemporalContext",
     "TransitionOutcome",
     "__version__",
     "compute_checksum",

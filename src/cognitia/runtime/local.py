@@ -9,6 +9,14 @@ from __future__ import annotations
 from typing import Any
 
 from cognitia.abi.types import Decision, Observation
+from cognitia.attention.engine import (
+    AttentionEngine,
+    DeterministicAttentionEngine,
+)
+from cognitia.attention.types import (
+    AttentionQuery,
+    AttentionResult,
+)
 from cognitia.capabilities.base import (
     BaseCapability,
     CapabilityType,
@@ -18,6 +26,14 @@ from cognitia.capabilities.base import (
 from cognitia.capabilities.registry import (
     CapabilityRegistry,
     InMemoryCapabilityRegistry,
+)
+from cognitia.context.engine import (
+    ContextAssembler,
+    DeterministicContextAssembler,
+)
+from cognitia.context.types import (
+    CognitiveContext,
+    ContextQuery,
 )
 from cognitia.epistemic.service import (
     EpistemicService,
@@ -54,7 +70,7 @@ from cognitia.service.facade import (
 
 
 class LocalCognitiveRuntime:
-    """Local, in-process runtime managing service assembly, persistence, memory, and cognitive lifecycle."""
+    """Local, in-process runtime managing service assembly, persistence, memory, context, attention, and cognitive lifecycle."""
 
     def __init__(
         self,
@@ -66,6 +82,8 @@ class LocalCognitiveRuntime:
         memory_store: MemoryStore | None = None,
         consolidation_service: ConsolidationService | None = None,
         rule_store: RuleStore | None = None,
+        context_assembler: ContextAssembler | None = None,
+        attention_engine: AttentionEngine | None = None,
     ) -> None:
         self._epistemics = epistemic_service or InMemoryEpistemicService()
         self._experience = experience_service or InMemoryExperienceService()
@@ -75,6 +93,13 @@ class LocalCognitiveRuntime:
         self._memory = memory_store or InMemoryMemoryStore(persistence_store=self._persistence)
         self._consolidation = consolidation_service or InMemoryConsolidationService()
         self._rules = rule_store or InMemoryRuleStore()
+        self._context_assembler = context_assembler or DeterministicContextAssembler(
+            persistence_store=self._persistence,
+            memory_store=self._memory,
+            rule_store=self._rules,
+            epistemic_service=self._epistemics,
+        )
+        self._attention_engine = attention_engine or DeterministicAttentionEngine()
 
         # Bootstrap default deterministic reference providers if not already present
         if not self._capabilities.list_all():
@@ -113,6 +138,30 @@ class LocalCognitiveRuntime:
     @property
     def rules(self) -> RuleStore:
         return self._rules
+
+    @property
+    def context_assembler(self) -> ContextAssembler:
+        return self._context_assembler
+
+    @property
+    def attention_engine(self) -> AttentionEngine:
+        return self._attention_engine
+
+    def assemble_context(
+        self,
+        observation: Observation,
+        query: ContextQuery | None = None,
+    ) -> CognitiveContext:
+        """Assemble multi-dimensional situational cognitive context around an observation."""
+        return self._context_assembler.assemble_context(observation, query)
+
+    def focus_context(
+        self,
+        context: CognitiveContext,
+        query: AttentionQuery | None = None,
+    ) -> AttentionResult:
+        """Focus and prioritize cognitive attention over an assembled CognitiveContext."""
+        return self._attention_engine.focus(context, query)
 
     def request_decision(
         self,

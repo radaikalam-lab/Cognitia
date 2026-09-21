@@ -128,3 +128,89 @@ The explicit act of a human operator authoring, superseding, approving, or retir
 ### Rule Provenance
 The lineage audit trail recording the human author or model generator, creation timestamp, parent rule version, and supporting evidence references for a cognitive rule.
 
+### Cognitive Observation
+A raw or structured data record representing a discrete occurrence captured from a source at a specific point in time without incorporating subsequent interpretations or conclusions.
+
+### Cognitive Context
+A structured situational assembly of historical memories, temporal neighbors, active rules, and epistemic states relevant to a reference observation.
+
+### Context Assembly
+The deterministic process of querying, selecting, and organizing relevant cognitive material surrounding an observation into a `CognitiveContext`.
+
+### Context Item
+An individual entity or reference selected into a `CognitiveContext` annotated with an explicit `RelevanceReason`, relevance score, and provenance link.
+
+### Temporal Context
+The structured representation of preceding and succeeding observations within a configured time window surrounding a reference observation.
+
+### Historical Context
+The subset of relevant historical experiences, observations, and evidence retrieved via the Cognitive Memory layer for a specific cognitive situation.
+
+### Context Relevance
+The auditable, deterministic criteria (`SUBJECT_MATCH`, `EPISODE_MATCH`, `TEMPORAL_MATCH`, `RULE_MATCH`, `MEMORY_MATCH`, etc.) explaining why an item was included in context.
+
+### Context Snapshot
+An immutable, point-in-time composition of a `CognitiveContext` preserving full lineage provenance.
+
+### Cognitive Attention
+The deterministic subsystem responsible for selecting, prioritizing, and focusing information from an assembled `CognitiveContext` for a specific cognitive task. Context assembles; Attention prioritizes.
+
+### Attention Query
+A lightweight, immutable task specification defining focus subject IDs, requested item types, epistemic status targets, and budget limits for cognitive attention.
+
+### Attention Item
+An auditable, immutable reference to a focused item from a `CognitiveContext`, containing its deterministic rank, attention score, explainable selection reasons, and epistemic status.
+
+### Attention Result
+An immutable snapshot containing the ranked attention items, reference observation ID, source context ID, task query identity, budget limit, and provenance lineage.
+
+### Attention Score
+A deterministic engineering prioritization value in $[0.0, 1.0]$ used strictly to allocate attention budget. It is NOT confidence, probability, truth, epistemic certainty, or causal strength.
+
+### Attention Reason
+An explainable enumeration (`REFERENCE_ITEM`, `TASK_MATCH`, `SUBJECT_MATCH`, `TEMPORAL_PROXIMITY`, `EPISODE_RELEVANCE`, `SOURCE_RELEVANCE`, `EPISTEMIC_RELEVANCE`, `RULE_RELEVANCE`, `MEMORY_RELEVANCE`, `EXPLICIT_SELECTION`) detailing why an item received priority.
+
+### Attention Budget
+A deterministic limit (`maximum_items`) capping the number of focused items produced for downstream reasoning or epistemic evaluation.
+
+### Epistemic Tension
+The coexistence of conflicting or competing evidence (e.g. `SUPPORT` vs `REFUTE`) within the cognitive state. Context maps and preserves epistemic tension rather than prematurely resolving or filtering it.
+
+### Context Enrichment
+The deterministic expansion of a `CognitiveContext` with structural, descriptive intelligence (temporal intervals, entity associations, state reconstruction, sequences, recurrence, aggregates, deviations, correlations, provenance neighbourhoods, epistemic tension, and compression) without performing reasoning or causal inference.
+
+### Temporal Relation
+A deterministic relationship (`BEFORE`, `AFTER`, `CONCURRENT`, `WITHIN_WINDOW`) and time delta between entities relative to a reference observation.
+
+### Contextual Association
+A structural correlation (`SAME_SUBJECT`, `SAME_EPISODE`, `SAME_SOURCE`, `SHARED_PROVENANCE`, `EXPLICIT_RELATIONSHIP`) between entities in context based on verifiable co-occurrence rather than assumed semantic causality.
+
+### State Reconstruction
+The deterministic representation of observable system/environment variables (`latest_value`, `previous_value`, `first_known_value`, `is_unknown`, `is_conflicted`) based strictly on recorded historical observations up to the reference observation.
+
+### Sequence Context
+An observed chronological ordering of events surrounding an observation (`relative_positions`, `timestamps`, `time_deltas`). Observed sequence does not imply causality.
+
+### Recurrence Context
+Descriptive statistics capturing historical event occurrence counts, observation intervals, and median/latest intervals across a timespan.
+
+### Aggregate Context
+Descriptive numerical statistics (`count`, `min`, `max`, `mean`, `median`, `range`, sample `std_dev`, `delta_from_previous`, `delta_from_mean`) computed deterministically over explicitly observed metrics.
+
+### Contextual Deviation
+A descriptive indicator (`ABOVE_HISTORICAL_RANGE`, `BELOW_HISTORICAL_RANGE`, `ABOVE_BASELINE`, `BELOW_BASELINE`, `RAPID_CHANGE`, `UNUSUAL_INTERVAL`) comparing current observed values to historical baselines without declaring faults or diagnosis.
+
+### Cross-Source Correlation
+A bounded correlation between multi-source telemetry observations with an explicit basis explanation (`TEMPORAL_PROXIMITY`, `SHARED_SUBJECT`, `SHARED_EPISODE`, `SHARED_SOURCE`, `SHARED_PROVENANCE`, `EXPLICIT_RELATIONSHIP`).
+
+### Provenance Neighbourhood
+A bounded subgraph of upstream and downstream lineage connections (`derived_from`, `produced_by`, `measured_by`, `referenced_by`, `validated_by`) surrounding an observation.
+
+### Context Conflict
+The preservation of conflicting observational data (such as concurrent differing values at identical timestamps/subjects) without silent overwriting.
+
+### Context Compression
+A deterministic structural summary of context dimensions (observation count, timespan, subject count, source count, epistemic counts, sequence count, deviation count, conflict count) without task-based prioritization or filtering.
+
+
+
