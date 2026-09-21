@@ -7,8 +7,8 @@ Domain applications integrate with Cognitia through **adapters**.
 ```text
 ┌────────────────────────────┐         ┌────────────────────────────┐
 │     Domain Application     │         │          Cognitia          │
-│ (AcoustiForge, CellForge,  │         │       (Cognitive Plane)    │
-│   Robotics, Swarm, etc.)   │         │                            │
+│ (Frappe, AcoustiForge,     │         │       (Cognitive Plane)    │
+│  FJH, CellForge, Robotics) │         │                            │
 │                            │         │                            │
 │  Domain Data & Semantics   │ ──────> │  Cognitive ABI Contracts   │
 │                            │ Adapter │                            │
@@ -25,4 +25,6 @@ Domain applications integrate with Cognitia through **adapters**.
 3. **External Domain Authority**:
    Domain authority remains strictly outside Cognitia. The adapter or the domain application decides whether, when, and how to execute or dismiss cognitive proposals.
 
-*Note: In Phase 0, no concrete application adapters are implemented. This directory defines the architectural boundary.*
+### Implemented Adapters
+
+- [Frappe / ERPNext Adapter](file:///e:/Cognitia/adapters/frappe/README.md): First reference adapter for enterprise business workflows, human-governed cognitive rules, and read-only advisory generation.

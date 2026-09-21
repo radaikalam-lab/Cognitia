@@ -1,6 +1,6 @@
 # Cognitia Architecture
 
-## 1. Architectural Overview
+## 1. Architectural Overview & Four-Plane Architecture
 
 Cognitia provides domain-neutral, reusable cognitive and epistemic infrastructure across diverse consuming applications without domain coupling or authority overstepping.
 
@@ -16,7 +16,16 @@ Cognitia provides domain-neutral, reusable cognitive and epistemic infrastructur
 │                           COGNITIVE PLANE                              │
 │       Cognitia Core (ABI, Types, Serialization, Immutability)          │
 │       Cognitive Services (Epistemics, Experience, Reasoning, Models)   │
-│       Runtime (LocalCognitiveRuntime, In-Memory Reference Providers)   │
+│       Cognitive Memory Layer · Consolidation Pipeline                  │
+│       CognitiveService Facade · LocalCognitiveRuntime                  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Historical Substrate (Async)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                          PERSISTENCE PLANE                             │
+│       Event Journal (Append-only record of what happened)              │
+│       Object Store (Durable canonical cognitive artifacts)             │
+│       History Query · Provenance Lineage · Cognitive Timeline          │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Cognitive Proposals (Advisory)
                                     ▼
@@ -26,6 +35,8 @@ Cognitia provides domain-neutral, reusable cognitive and epistemic infrastructur
 │       Owns: Physics, Safety, Constraint Verification, Actuators        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+> **Constitutional Rule**: The Persistence Plane and Memory Layer are durable/retrieval substrates, NOT mandatory real-time execution paths. Persistence and memory are non-authoritative and are NEVER in the hard real-time safety path.
 
 ---
 
@@ -38,22 +49,23 @@ Cognitia enforces a strict 4-tier conceptual separation:
 │ 1. SERVICE   = WHAT Cognitia provides (Epistemics, Experience,         │
 │                Reasoning, Capabilities, Provenance, Model Registry)     │
 ├────────────────────────────────────────────────────────────────────────┤
-│ 2. RUNTIME   = WHERE and HOW those services execute                    │
+│ 2. PERSISTENCE/MEMORY = HOW cognitive history and contextual memory    │
+│                are durably stored and selectively retrieved            │
+├────────────────────────────────────────────────────────────────────────┤
+│ 3. RUNTIME   = WHERE and HOW those services execute                    │
 │                (e.g., LocalCognitiveRuntime in Phase 0)                │
 ├────────────────────────────────────────────────────────────────────────┤
-│ 3. ADAPTER   = HOW an external domain connects and translates          │
+│ 4. ADAPTER   = HOW an external domain connects and translates          │
 │                (Bidirectional transformation, outside Cognitia core)   │
 ├────────────────────────────────────────────────────────────────────────┤
-│ 4. APPLICATION = WHO owns domain semantics and production authority    │
+│ 5. APPLICATION = WHO owns domain semantics and production authority    │
 │                (External client, real-time safety, physical actuators) │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Cognitive Service Composition
-
-Cognitia avoids monolithic "god objects" through clean composition:
+## 3. Cognitive Service, Memory & Persistence Composition
 
 ```text
                    ┌───────────────────────────────┐
@@ -66,14 +78,86 @@ Cognitia avoids monolithic "god objects" through clean composition:
  ┌───────────────┐┌──────────────┐┌──────────────┐┌──────────────┐┌──────────────┐
  │  Experience   ││  Epistemic   ││  Reasoning   ││  Capability  ││    Model     │
  │    Service    ││   Service    ││   Service    ││   Registry   ││   Registry   │
- └───────────────┘└──────────────┘└──────────────┘└──────────────┘└──────────────┘
+ └───────┬───────┘└──────┬───────┘└──────┬───────┘└──────┬───────┘└──────┬───────┘
+         │               │               │               │               │
+         └───────────────┼───────────────┼───────────────┼───────────────┘
+                         │               │               │
+                         ▼               ▼               ▼
+                   ┌───────────────────────────────────────────┐
+                   │               MemoryStore                 │
+                   │      (Selective Context Retrieval)        │
+                   └─────────────────────┬─────────────────────┘
+                                         │
+                                         ▼
+                   ┌───────────────────────────────────────────┐
+                   │             PersistenceStore              │
+                   │        (Event Journal & Object Store)     │
+                   └───────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. Provider Layer & Provider Architecture
+## 4. Plasticity-Inspired Cognitive Adaptation Loop
 
-Cognitia defines a strict **Provider Boundary** separating domain-neutral capability interfaces from concrete cognitive engines.
+Cognitia defines a controlled mechanism for artificial cognitive adaptation:
+
+```text
+                         EXPERIENCE
+                             │
+                             ▼
+                        PERSISTENCE
+                             │
+                             ▼
+                      MEMORY RETRIEVAL
+                             │
+                             ▼
+                PLASTICITY OPERATOR (Laya / TinyML / Rules)
+                             │
+                             ▼
+                 CANDIDATE LEARNING ARTIFACT
+                             │
+                             ▼
+                    EPISTEMIC EVALUATION
+                             │
+                      ┌──────┴──────┐
+                      │             │
+                   REFUTED      SUPPORTED
+                      │             │
+                      ▼             ▼
+                 Historical   CONSOLIDATION
+                   Record           │
+                                    ▼
+                             VALIDATION GATE
+                                    │
+                                    ▼
+                           VERSION N+1 CREATED
+                                    │
+                                    ▼
+                             MODEL REGISTRY
+```
+
+### 4.1 Invariants of Cognitive Plasticity
+1. **$\text{Persistence} \neq \text{Memory} \neq \text{Learning} \neq \text{Consolidation} \neq \text{Authority}$**: Each layer maintains strict separation.
+2. **No Autonomous Production Weight Mutation**: Runtime experience never directly modifies active model weights. Adaptation produces candidate proposals that undergo epistemic evaluation and controlled consolidation into version $N+1$.
+3. **Versioned Plasticity**: Version $N$ remains immutable and historically retrievable when Version $N+1$ is registered.
+4. **Forgetting as Deprioritization**: Forgetting is an access/priority transformation (supersession, attenuation, retirement), never the destructive erasing of historical lineage.
+
+---
+
+## 5. Biological Metaphor & Hive / Collective Cognition
+
+To aid intuitive reasoning about distributed cognitive roles, Cognitia uses a biological architectural metaphor:
+* **Ecosystem (Hive)**: The collective Cognitia deployment across edge nodes and central services.
+* **Coordinator (Queen-like)**: Central Cognitia service orchestrating model governance and long-term consolidation.
+* **Specialist Providers (Worker-like)**: Laya, tiny models, deterministic rules, and symbolic engines performing fast inferences and candidate pattern proposals.
+* **Collective Memory**: Persistent cognitive history preserving longitudinal experiences across nodes.
+* **Consolidation**: Hardening repeatedly corroborated patterns into stable, versioned models.
+
+> **Note**: This is an architectural analogy only, not a claim of biological neural equivalence.
+
+---
+
+## 6. Provider Layer & Provider Architecture
 
 ```text
                     COGNITIA CORE
@@ -106,96 +190,75 @@ Cognitia defines a strict **Provider Boundary** separating domain-neutral capabi
                    Domain Application
 ```
 
-### 4.1 Architectural Position of Laya
-
-> **Laya Provider** is a concrete, optional implementation of one or more Cognitia capability contracts (e.g., `DecisionCapability`, `ReasoningCapability`).
-
-* **Provider Independence**: Laya is merely one possible cognitive provider. Cognitia is fully functional without Laya.
-* **No Core Coupling**: Laya is NOT part of the Cognitive ABI, Epistemic Service contract, Provenance contract, Experience contract, Model Registry contract, or Authority Boundary.
-* **Dependency Inversion**:
-  ```text
-  Cognitia Core
-        ▲
-        │ implements
-        │
-  Laya Provider
-  ```
-  Cognitia Core NEVER imports Laya. Laya providers import Cognitia contracts and implement its SPI protocols.
-
-### 4.2 Epistemic and Authority Boundary for Providers
-
-A cognitive provider (including Laya) never possesses domain authority or epistemic infallibility:
-
-```text
-Laya / Provider Inference
-         │
-         ▼
-  Cognitive Proposal (Advisory)
-         │
-         ▼
-Epistemic Evaluation / Recording (Epistemic Service)
-         │
-         ▼
-Domain-Specific Validation & Safety Interlocks (Domain Application)
-         │
-         ▼
-  Authoritative Decision / Physical Actuation (Authority Plane)
-```
-
-Never:
-$$\text{Provider Inference} \longrightarrow \text{Domain Truth / Actuator Control}$$
-
-### 4.3 Provider Plurality & Model Registration
-
-Cognitia is designed to support provider coexistence and substitution:
-
-```text
-DecisionCapability
-       │
-       ├── LayaDecisionProvider (Optional neural/generative provider)
-       ├── RuleDecisionProvider (Deterministic reference provider)
-       ├── TinyMLDecisionProvider (Edge-optimized ML provider)
-       └── ClassicalMLDecisionProvider (Statistical estimator)
-```
-
-The **Capability Registry** tracks *what capability is available* (`capability_type = DECISION`, `provider_name = "laya"`).  
-The **Model Registry** tracks *which versioned model artifact implements it* (`model_id`, `model_version`, `provider = "laya"`, `calibration_checksum`).
-
 ---
 
-## 5. Deployment Topologies (Present & Future)
+## 7. Phase 1: Frappe Adapter & Human-Governed Cognitive Intelligence
 
-### Phase 0: Local-First (In-Process)
-In Phase 0, all services execute synchronously/asynchronously within a single Python process managed by `LocalCognitiveRuntime`. Zero network, zero databases, zero external services, and zero mandatory external AI models required.
-
-### Future Topology (Central Cognitive Server & Edge Nodes)
-In future phases, the same contracts will support central and edge topologies without modifying domain adapter contracts:
+Phase 1 introduces the first concrete domain adapter along with a domain-neutral **Human-Governed Cognitive Rule** subsystem.
 
 ```text
-                   CENTRAL COGNITIVE SERVICE
-                   ┌────────────────────────┐
-                   │ Cognitia Core Service  │
-                   │                        │
-                   │ • Experience Store     │
-                   │ • Epistemic Graph      │
-                   │ • Deep Reasoning       │
-                   │ • Model Registry       │
-                   │ • Offline Learning     │
-                   │                        │
-                   │    Provider Layer      │
-                   │   ┌──────────────┐     │
-                   │   │ Laya / Rules │     │
-                   │   └──────────────┘     │
-                   └───────────┬────────────┘
-                               │
-                      async / event bus / IPC
-                               │
-               ┌───────────────┼───────────────┐
-               ▼               ▼               ▼
-          AcoustiForge     CellForge       Robotics
-         (Edge Adapter)  (Edge Adapter)  (Edge Node)
-               │               │               │
-               ▼               ▼               ▼
-         Local Safety / Actuator Control Authorities
+                    Frappe / ERPNext
+                           │
+                    Document Events
+                           │
+                           ▼
+                 ┌───────────────────┐
+                 │   Frappe Adapter  │
+                 └─────────┬─────────┘
+                           │
+                     Cognitia ABI
+                           │
+                           ▼
+                 ┌───────────────────┐
+                 │     Cognitia      │
+                 │                   │
+                 │ Observation       │
+                 │ Experience        │
+                 │ Persistence       │
+                 │ Memory            │
+                 │ Epistemics        │
+                 │ Reasoning         │
+                 │ Rules             │
+                 └─────────┬─────────┘
+                           │
+                    Advisory Decision
+                           │
+                           ▼
+                    Frappe / Human
 ```
-> **Critical Invariant**: Central Cognitia and central providers (such as Laya) are NEVER in the hard real-time safety path. Local edge domains must operate safely even when disconnected.
+
+### 7.1 Three Plasticity Paths
+
+Cognitia recognizes that artificial cognitive plasticity does not require autonomous machine learning. Plasticity evolves across three distinct paths:
+
+```text
+                 COGNITIVE PLASTICITY
+                         │
+          ┌──────────────┼───────────────┐
+          │              │               │
+          ▼              ▼               ▼
+       HUMAN          ASSISTED         FUTURE
+      GUIDANCE        LEARNING        AUTONOMOUS
+          │              │               │
+          ▼              ▼               ▼
+     Human rule      Model proposal    Model proposal
+     / revision      + human review    + governance
+          │              │               │
+          └──────────────┼───────────────┘
+                         ▼
+                   Consolidation
+                         │
+                         ▼
+                  Versioned Cognition
+```
+
+1. **Human-Guided Plasticity**: A human observes operational evidence, formulates a heuristic or business insight, and authors/updates an immutable `CognitiveRule` ($N \to N+1$).
+2. **Machine-Assisted Plasticity**: A TinyML model, Laya, or rule operator processes memory to propose a `CandidateLearningArtifact`, which undergoes human/governance review prior to consolidation.
+3. **Governed Autonomous Plasticity**: Autonomous candidate generation with epistemic validation and automated consolidation under strict constraint envelopes (future capability).
+
+### 7.2 Core Adapter & Rule Invariants
+
+* **Core Independence**: Cognitia Core has ZERO dependencies on Frappe, ERPNext, AcoustiForge, or FJH.
+* **Non-Authoritative Advisories**: Cognitia outputs read-only advisories with explicit `is_authoritative: False`. It never mutates domain documents or business states.
+* **Immutability of Rule Versions**: Published cognitive rules cannot be modified in place. Revisions generate Version $N+1$ linked by parent lineage.
+* **Anti-Silent-Mutation**: Runtime observations and model inferences cannot silently alter active rules or weights.

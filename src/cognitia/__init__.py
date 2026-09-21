@@ -42,11 +42,39 @@ from cognitia.experience.record import (
     ExperienceBuilder,
     ExperienceRecord,
 )
+from cognitia.memory.consolidation import (
+    ConsolidationCapability,
+    ConsolidationService,
+    InMemoryConsolidationService,
+    PlasticityOperator,
+)
+from cognitia.memory.store import (
+    InMemoryMemoryStore,
+    MemoryStore,
+)
+from cognitia.memory.types import (
+    CandidateLearningArtifact,
+    CandidateType,
+    ConsolidationResult,
+    ConsolidationStatus,
+    MemoryContext,
+    MemoryQuery,
+)
 from cognitia.models.registry import (
     InMemoryModelRegistry,
     ModelRecord,
     ModelRegistry,
     ModelStatus,
+)
+from cognitia.persistence.events import (
+    CognitiveEvent,
+    CognitiveEventType,
+    EventQuery,
+    ObjectQuery,
+)
+from cognitia.persistence.store import (
+    InMemoryPersistenceStore,
+    PersistenceStore,
 )
 from cognitia.provenance.record import (
     LineageChain,
@@ -62,6 +90,18 @@ from cognitia.reasoning.types import (
     ReasoningStep,
     ReasoningTrace,
 )
+from cognitia.rules.capability import (
+    RuleEvaluationCapability,
+    evaluate_predicate,
+)
+from cognitia.rules.store import (
+    InMemoryRuleStore,
+    RuleStore,
+)
+from cognitia.rules.types import (
+    CognitiveRule,
+    RuleStatus,
+)
 from cognitia.runtime.local import LocalCognitiveRuntime
 from cognitia.service.facade import (
     CognitiveService,
@@ -75,13 +115,22 @@ __all__ = [
     "SCHEMA_VERSION_V1",
     "Action",
     "BaseCapability",
+    "CandidateLearningArtifact",
+    "CandidateType",
     "CapabilityDescriptor",
     "CapabilityRegistry",
     "CapabilityType",
     "Challenge",
     "Claim",
+    "CognitiveEvent",
+    "CognitiveEventType",
     "CognitiveObject",
+    "CognitiveRule",
     "CognitiveService",
+    "ConsolidationCapability",
+    "ConsolidationResult",
+    "ConsolidationService",
+    "ConsolidationStatus",
     "Decision",
     "DecisionCapability",
     "DeterministicSerializer",
@@ -89,6 +138,7 @@ __all__ = [
     "EpistemicService",
     "EpistemicStatus",
     "EpistemicTransition",
+    "EventQuery",
     "Evidence",
     "EvidenceDirection",
     "ExperienceBuilder",
@@ -96,24 +146,38 @@ __all__ = [
     "ExperienceService",
     "Hypothesis",
     "InMemoryCapabilityRegistry",
+    "InMemoryConsolidationService",
     "InMemoryEpistemicService",
     "InMemoryExperienceService",
+    "InMemoryMemoryStore",
     "InMemoryModelRegistry",
+    "InMemoryPersistenceStore",
+    "InMemoryRuleStore",
     "LineageChain",
     "LocalCognitiveRuntime",
+    "MemoryContext",
+    "MemoryQuery",
+    "MemoryStore",
     "ModelRecord",
     "ModelRegistry",
     "ModelStatus",
+    "ObjectQuery",
     "Observation",
     "Outcome",
+    "PersistenceStore",
+    "PlasticityOperator",
     "ProvenanceRecord",
     "ReasoningCapability",
     "ReasoningMode",
     "ReasoningStep",
     "ReasoningTrace",
     "Residual",
+    "RuleEvaluationCapability",
+    "RuleStatus",
+    "RuleStore",
     "SourceType",
     "TransitionOutcome",
     "__version__",
     "compute_checksum",
+    "evaluate_predicate",
 ]

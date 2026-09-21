@@ -1,7 +1,7 @@
 """Cognitia Local Cognitive Runtime.
 
-Provides in-process runtime assembly and composition of cognitive services
-and reference capability providers.
+Provides in-process runtime assembly and composition of cognitive services,
+persistence substrates, memory layers, and reference capability providers.
 """
 
 from __future__ import annotations
@@ -23,15 +23,29 @@ from cognitia.epistemic.service import (
     EpistemicService,
     InMemoryEpistemicService,
 )
+from cognitia.memory.consolidation import (
+    ConsolidationService,
+    InMemoryConsolidationService,
+)
+from cognitia.memory.store import (
+    InMemoryMemoryStore,
+    MemoryStore,
+)
 from cognitia.models.registry import (
     InMemoryModelRegistry,
     ModelRegistry,
+)
+from cognitia.persistence.store import (
+    InMemoryPersistenceStore,
+    PersistenceStore,
 )
 from cognitia.reasoning.capability import (
     DeterministicMockReasoner,
     ReasoningCapability,
 )
 from cognitia.reasoning.types import ReasoningMode, ReasoningTrace
+from cognitia.rules.capability import RuleEvaluationCapability
+from cognitia.rules.store import InMemoryRuleStore, RuleStore
 from cognitia.service.facade import (
     CognitiveService,
     ExperienceService,
@@ -40,7 +54,7 @@ from cognitia.service.facade import (
 
 
 class LocalCognitiveRuntime:
-    """Local, in-process runtime managing service assembly and cognitive lifecycle."""
+    """Local, in-process runtime managing service assembly, persistence, memory, and cognitive lifecycle."""
 
     def __init__(
         self,
@@ -48,16 +62,25 @@ class LocalCognitiveRuntime:
         experience_service: ExperienceService | None = None,
         capability_registry: CapabilityRegistry | None = None,
         model_registry: ModelRegistry | None = None,
+        persistence_store: PersistenceStore | None = None,
+        memory_store: MemoryStore | None = None,
+        consolidation_service: ConsolidationService | None = None,
+        rule_store: RuleStore | None = None,
     ) -> None:
         self._epistemics = epistemic_service or InMemoryEpistemicService()
         self._experience = experience_service or InMemoryExperienceService()
         self._capabilities = capability_registry or InMemoryCapabilityRegistry()
         self._models = model_registry or InMemoryModelRegistry()
+        self._persistence = persistence_store or InMemoryPersistenceStore()
+        self._memory = memory_store or InMemoryMemoryStore(persistence_store=self._persistence)
+        self._consolidation = consolidation_service or InMemoryConsolidationService()
+        self._rules = rule_store or InMemoryRuleStore()
 
         # Bootstrap default deterministic reference providers if not already present
         if not self._capabilities.list_all():
             self._capabilities.register(DeterministicMockDecisionProvider())
             self._capabilities.register(DeterministicMockReasoner())
+            self._capabilities.register(RuleEvaluationCapability(rule_store=self._rules))
 
     @property
     def epistemics(self) -> EpistemicService:
@@ -74,6 +97,22 @@ class LocalCognitiveRuntime:
     @property
     def models(self) -> ModelRegistry:
         return self._models
+
+    @property
+    def persistence(self) -> PersistenceStore:
+        return self._persistence
+
+    @property
+    def memory(self) -> MemoryStore:
+        return self._memory
+
+    @property
+    def consolidation(self) -> ConsolidationService:
+        return self._consolidation
+
+    @property
+    def rules(self) -> RuleStore:
+        return self._rules
 
     def request_decision(
         self,

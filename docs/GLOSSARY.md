@@ -59,6 +59,45 @@ A versioned computational artifact (weights, parameters, lookup tables, rule mat
 ### Provenance
 The immutable audit trail documenting creator, source type, inputs, parent references, schema versions, timestamps, and checksums.
 
+### Persistence Plane
+The durable architectural substrate responsible for recording cognitive events and preserving canonical cognitive artifacts without becoming an authority.
+
+### Event Journal
+An append-only, immutable record of what cognitive occurrences took place over time.
+
+### Object Store
+A durable, typed repository for saving and retrieving canonical Cognitia cognitive artifacts under their stable UUIDv4 identities.
+
+### Cognitive Memory
+A structured retrieval layer over persisted cognitive history that selects historically relevant observations, experiences, evidence, reasoning traces, decisions, outcomes, and epistemic states for subsequent cognitive processing.
+
+### Memory Context
+A structured container assembling selected historical entities, epistemic statuses, and lineage for presentation to cognitive capabilities.
+
+### Cognitive Plasticity
+The capacity of Cognitia to alter future cognitive processing based on accumulated experience through controlled formation, evaluation, and consolidation of new cognitive structures.
+
+### Plasticity Operator
+A provider (e.g., tiny ML model, rule miner, Laya) that processes historical memory context to propose Candidate Learning Artifacts.
+
+### Candidate Learning Artifact
+A structured proposal for cognitive adaptation (e.g., pattern, hypothesis, rule candidate, model revision) subject to epistemic evaluation and consolidation.
+
+### Consolidation
+The controlled promotion of a validated candidate cognitive structure into a versioned persistent representation ($N \rightarrow N+1$).
+
+### Plasticity Hardening
+The progressive stabilization of repeatedly validated cognitive patterns into versioned representations, while preserving the historical evidence and earlier versions from which the representation evolved.
+
+### Forgetting
+An access and priority transformation (supersession, attenuation, deprioritization, or status retirement) that changes operational relevance without destroying historical auditability or provenance.
+
+### Persistence Provider
+A concrete implementation of the `PersistenceStore` SPI (e.g., `InMemoryPersistenceStore`, `SQLitePersistenceStore`).
+
+### Cognitive Timeline
+An ordered sequence of recorded events enabling retrospective end-to-end reconstruction ($\text{Observation} \rightarrow \text{Cognition} \rightarrow \text{Decision} \rightarrow \text{Action} \rightarrow \text{Outcome}$).
+
 ### Service
 *What* Cognitia provides: logical domain-neutral cognitive interfaces (`EpistemicService`, `ExperienceService`, `ReasoningService`, `CapabilityRegistry`, `ModelRegistry`).
 
@@ -70,3 +109,22 @@ A domain-specific translation layer residing outside Cognitia that maps domain r
 
 ### Authority
 The domain application or physical device possessing sovereign control over physics, safety, real-time control, scientific ground truth, and physical actuation.
+
+### Human-Governed Plasticity
+The evolution of cognitive capability, intelligence, and rules driven through deliberate human formulation, approval, and versioning rather than autonomous machine learning.
+
+### Human Cognitive Rule
+A structured, domain-neutral cognitive rule authored or confirmed by a human carrying explicit human provenance (`SourceType.HUMAN`), conditions, recommendations, rationale, and scope.
+
+### Cognitive Intelligence Artifact
+A published, versioned knowledge or heuristic structure (e.g., `CognitiveRule`, `Hypothesis`, `ModelRecord`) providing advisory evaluation to consuming applications.
+
+### Cognitive Rule Version
+An immutable publication of a cognitive rule (e.g., `Version 1.0.0`). Revisions generate Version $N+1$ linked by parent lineage without modifying historical versions.
+
+### Human Intervention
+The explicit act of a human operator authoring, superseding, approving, or retiring cognitive rules and intelligence artifacts within the cognitive plane.
+
+### Rule Provenance
+The lineage audit trail recording the human author or model generator, creation timestamp, parent rule version, and supporting evidence references for a cognitive rule.
+
