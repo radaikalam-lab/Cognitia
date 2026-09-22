@@ -517,3 +517,206 @@ Operator.propose(context)
 - No regressions in existing test suite (430 total passing)
 - Operators remain read-only and advisory-only
 - Deterministic outputs are reproducible
+
+---
+
+## 11. Phase 7: Directional Programming
+
+Phase 7 introduces goal-directed cognitive programming where objectives, constraints, and success criteria are expressed as first-class cognitive specifications rather than imperative instructions.
+
+### 11.1 Core Invariant
+
+```text
+Directional Specification  ≠  Imperative Program  ≠  Execution Authority  ≠  Guaranteed Outcome
+```
+
+Directional programming defines what cognitive state is desired, not how to achieve it. Execution remains the responsibility of the Authority Plane.
+
+### 11.2 Directional Programming Contract
+
+```text
+DirectionalSpecification
+  ├── objectives: list[DirectionalObjective]
+  ├── constraints: list[DirectionalConstraint]
+  └── success_criteria: list[SuccessCriterion]
+
+DirectionalObjective
+  ├── description: str
+  ├── target_state: dict
+  └── priority: int
+
+DirectionalConstraint
+  ├── constraint_type: str
+  ├── expression: str
+  └── severity: str
+
+SuccessCriterion
+  ├── criterion_type: str
+  ├── expression: str
+  └── threshold: float
+```
+
+### 11.3 Directional Provider
+
+```text
+DirectionalProvider (Protocol)
+  ├── propose(specification: DirectionalSpecification) -> DirectionalProposal
+  └── capabilities: list[str]
+
+DirectionalProposal
+  ├── specification_id: str
+  ├── provider_id: str
+  ├── proposed_actions: list[ProposedAction]
+  ├── residuals: list[DirectionalResidual]
+  ├── confidence: float
+  └── epistemic_status: EpistemicStatus
+```
+
+### 11.4 Residual Semantics
+
+Residuals are explicit declarations of unknowns, missing capabilities, unsatisfiable constraints, or unmodeled dynamics. A proposal with residuals is not a failure - it is a complete and honest accounting of what the provider can and cannot achieve.
+
+### 11.5 Authority Boundary
+
+- Directional proposals are advisory cognitive artifacts
+- Proposals do NOT execute actions
+- Proposals do NOT mutate production state
+- Proposals do NOT alter epistemic state automatically
+- Activation requires explicit governance and authority-plane decision
+
+---
+
+## 12. Phase 8: Distributed & Edge Cognition
+
+Phase 8 extends Cognitia to distributed and edge deployment topologies while preserving all existing cognitive semantics, identity, provenance, and authority boundaries.
+
+### 12.1 Core Invariant
+
+```text
+Distribution changes WHERE cognition executes, not WHAT a cognitive artifact means.
+Node identity (CognitiveNode) does NOT replace artifact identity.
+Synchronization is data/cognitive-state movement, NOT execution.
+```
+
+### 12.2 Node Identity
+
+```text
+CognitiveNode
+  ├── node_id: str (unique node identity)
+  ├── node_type: NodeType (CENTRAL | EDGE | EMBEDDED)
+  ├── runtime_version: str
+  ├── capabilities: tuple[NodeCapability, ...]
+  └── provenance: ProvenanceRecord
+
+NodeCapability
+  ├── capability_id: str
+  ├── capability_type: str
+  ├── version: str
+  └── is_available: bool
+```
+
+Critical distinction:
+```text
+Node Capability Advertisement ≠ Execution Authority
+```
+
+### 12.3 Cognitive Envelope
+
+The `CognitiveEnvelope` is a transport-neutral wrapper for cognitive artifacts. The payload remains a canonical Cognitia artifact.
+
+```text
+CognitiveEnvelope
+  ├── artifact_type: str
+  ├── artifact_id: str
+  ├── source_node_id: str
+  ├── origin_node_id: str
+  ├── sequence_number: int | None
+  ├── payload: CognitiveObject
+  └── provenance: ProvenanceRecord
+```
+
+Invariants:
+1. The payload remains a canonical Cognitia artifact
+2. No domain-specific envelope variants are created
+3. Envelope serialization follows deterministic rules
+
+### 12.4 Cognitive Conflict
+
+Conflicts between cognitive artifacts from different nodes are explicitly represented and remain visible.
+
+```text
+CognitiveConflict
+  ├── subject_id: str
+  ├── artifact_ids: tuple[str, ...]
+  ├── source_nodes: tuple[str, ...]
+  ├── conflict_type: ConflictType
+  ├── description: str
+  ├── status: ConflictStatus (OPEN | RESOLVED | ESCALATED)
+  └── provenance: ProvenanceRecord
+
+ConflictType
+  ├── VERSION_CONFLICT
+  ├── STATE_CONFLICT
+  ├── EVIDENCE_CONFLICT
+  ├── EPISTEMIC_CONFLICT
+  ├── DIRECTION_CONFLICT
+  └── PROVENANCE_CONFLICT
+```
+
+### 12.5 Runtime Topology
+
+```text
+LocalCognitiveRuntime (base)
+  ├── CentralCognitiveRuntime (inherits local substrate)
+  └── EdgeCognitiveRuntime (inherits local substrate)
+```
+
+All runtimes share the same cognitive substrate (ABI, Persistence, Memory, Reasoning, Attention, etc.). Distribution changes execution location, not cognitive semantics.
+
+### 12.6 Synchronization
+
+```text
+SyncService (Protocol)
+  ├── publish(envelope: CognitiveEnvelope) -> None
+  ├── receive(node_id: str) -> CognitiveEnvelope | None
+  ├── acknowledge(envelope_id: str) -> None
+  ├── get_sync_state(source, target) -> SynchronizationState
+  ├── reconcile(peer_id: str) -> list[CognitiveConflict]
+  └── get_pending(node_id: str) -> list[CognitiveEnvelope]
+
+InMemoryCognitiveTransport
+  ├── send(envelope, target_node_id)
+  ├── receive(node_id) -> idempotent
+  ├── acknowledge(envelope_id)
+  ├── simulate_duplicate(envelope)
+  └── clear()
+```
+
+Synchronization properties:
+- **Idempotent**: receiving the same envelope twice produces no duplicate effect
+- **Local-first**: edge nodes operate fully without central connectivity
+- **Offline-capable**: disconnected edge operation preserves all local history
+- **Replayable**: offline artifacts remain traceable and reconcilable
+
+### 12.7 Authority & Failure Isolation
+
+```text
+Central Unavailable
+  └── Edge continues local cognition (Persistence, Memory, Reasoning, Attention)
+
+Edge Unavailable
+  └── Central continues unaffected
+
+Sync Unavailable
+  └── Local history preserved; reconciliation occurs on reconnection
+```
+
+### 12.8 Zero Dependencies
+
+Phase 8 maintains:
+- Python >= 3.12
+- 0 external runtime dependencies
+- 0 network dependencies
+- 0 distributed databases or message brokers
+
+All distribution semantics are implemented via deterministic in-process abstractions suitable for testing and local-first operation.

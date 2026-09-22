@@ -28,7 +28,7 @@ from cognitia.providers.types import AdvancedCapabilityType
 
 
 class TestAdvancedCapabilityType:
-    """Tests verifying all eight capability types exist."""
+    """Tests verifying all capability types exist."""
 
     def test_all_capability_types_exist(self) -> None:
         expected = {
@@ -40,6 +40,7 @@ class TestAdvancedCapabilityType:
             "VECTOR_RETRIEVAL",
             "REINFORCEMENT_LEARNING",
             "SELF_MODIFYING_REASONING",
+            "DIRECTIONAL_PROGRAMMING",
         }
         actual = {c.name for c in AdvancedCapabilityType}
         assert actual == expected

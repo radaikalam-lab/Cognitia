@@ -157,3 +157,67 @@ The detection of repeated co-occurrence of distinct event types within episodes.
 
 ### Deterministic Recurrence Discovery
 The identification of repeated temporal patterns across experiences (occurrence count, episode count, median interval). Remains strictly descriptive with no prediction or causal inference.
+
+---
+
+### Directional Programming
+A goal-directed cognitive paradigm where objectives, constraints, and success criteria are expressed as first-class cognitive specifications. Defines what cognitive state is desired, not how to achieve it.
+
+### Directional Specification
+An immutable cognitive specification containing objectives, constraints, and success criteria. Does not prescribe execution steps.
+
+### Directional Objective
+A desired cognitive end-state with description, target state dictionary, and priority.
+
+### Directional Constraint
+An explicit boundary condition on cognitive execution with type, expression, and severity.
+
+### Success Criterion
+A measurable condition for evaluating whether a directional specification has been satisfied.
+
+### Directional Proposal
+An advisory cognitive artifact produced by a directional provider containing proposed actions, explicit residuals, confidence, and epistemic status. Does not execute or mutate production state.
+
+### Directional Residual
+An explicit declaration of unknowns, missing capabilities, unsatisfiable constraints, or unmodeled dynamics encountered during directional programming. Residuals are not failures; they are honest accounting.
+
+### Directional Provider
+A provider implementing the `DirectionalProvider` protocol, capable of transforming `DirectionalSpecification` artifacts into `DirectionalProposal` artifacts.
+
+---
+
+### Distributed Cognition
+The extension of Cognitia to multiple execution nodes (central, edge, embedded) while preserving artifact meaning, identity, provenance, determinism, and authority semantics.
+
+### Cognitive Node
+The immutable identity of a logical Cognitia execution location (`CognitiveNode`). Node identity does not replace artifact identity.
+
+### Node Type
+The logical execution classification of a cognitive node: `CENTRAL`, `EDGE`, or `EMBEDDED`.
+
+### Node Capability
+An advertisement of a single capability available on a node (`NodeCapability`). Capability advertisement does not imply execution authority.
+
+### Cognitive Envelope
+A transport-neutral wrapper for a cognitive artifact (`CognitiveEnvelope`). The payload remains a canonical Cognitia artifact. Envelope serialization follows deterministic rules.
+
+### Cognitive Conflict
+An explicit representation of a conflict between cognitive artifacts from different nodes (`CognitiveConflict`). Conflicts remain visible and are never silently resolved.
+
+### Conflict Type
+Categories of cognitive conflicts: `VERSION_CONFLICT`, `STATE_CONFLICT`, `EVIDENCE_CONFLICT`, `EPISTEMIC_CONFLICT`, `DIRECTION_CONFLICT`, `PROVENANCE_CONFLICT`.
+
+### Conflict Status
+Lifecycle status of a detected cognitive conflict: `OPEN`, `RESOLVED`, `ESCALATED`.
+
+### Synchronization State
+Minimal state tracking for synchronization between two nodes (`SynchronizationState`). Tracks pending, acknowledged, and failed envelope counts.
+
+### Cognitive Topology
+A description of connectivity/relationships between cognitive nodes without granting authority (`CognitiveTopology`).
+
+### Local-First Operation
+The property that edge nodes can operate fully without central connectivity, preserving all local cognitive history and producing advisory outputs while disconnected.
+
+### Idempotent Ingestion
+The property that receiving the same cognitive envelope multiple times produces no duplicate cognitive effect.

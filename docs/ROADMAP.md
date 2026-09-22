@@ -155,8 +155,36 @@
 
 ---
 
-## Phase 7: Distributed & Edge Topologies
-* Central Cognitive Server deployment runtime (`CentralCognitiveRuntime`)
-* Edge Cognitive Node runtime (`EdgeCognitiveRuntime`)
-* Asynchronous state synchronization and offline replay protocols
-* Controlled offline model evolution pipelines across edge clusters
+## Phase 7: Directional Programming (Completed)
+* [x] Establish directional programming contract (`contracts/directional-programming-contract.md`)
+* [x] Define `DirectionalObjective`, `DirectionalConstraint`, `SuccessCriterion`, `DirectionalSpecification`
+* [x] Define `DirectionalProposal`, `DirectionalResidual` artifacts
+* [x] Implement `DirectionalProvider` protocol with explicit residual declaration
+* [x] Implement `DeterministicDirectionalProvider` with deterministic residual generation
+* [x] Implement `DirectionalService` protocol and `InMemoryDirectionalService`
+* [x] Integrate with existing Persistence, Provider Registry, and Gateway
+* [x] Authority boundary: proposals remain advisory; no automatic execution or state mutation
+* [x] Epistemic boundary: proposals start `UNRESOLVED`; explicit evaluation required
+* [x] 68 new Phase 7 tests under `tests/directional/`
+* [x] Full regression suite: 552 tests passing, 0 failures, 0 errors, 0 warnings
+
+---
+
+## Phase 8: Distributed & Edge Cognition (Completed)
+* [x] Establish distributed cognition contract (`contracts/distributed-cognition-contract.md`)
+* [x] Define `CognitiveNode`, `NodeCapability`, `NodeType` for node identity
+* [x] Define `CognitiveEnvelope` as transport-neutral artifact wrapper
+* [x] Define `CognitiveConflict`, `ConflictType`, `ConflictStatus` for explicit conflict representation
+* [x] Define `SynchronizationState` for idempotent sync tracking
+* [x] Define `CognitiveTopology` for connectivity description without authority
+* [x] Implement `LocalCognitiveRuntime` refactored for distribution reuse
+* [x] Implement `CentralCognitiveRuntime` and `EdgeCognitiveRuntime` inheriting local substrate
+* [x] Implement `SyncService` protocol and `InMemoryCognitiveTransport` for deterministic testing
+* [x] Implement `InMemorySyncService` with send, receive, acknowledge, idempotency, duplicate simulation
+* [x] Preserve artifact identity separate from node identity
+* [x] Preserve provenance across node boundaries
+* [x] Support local-first/offline operation on edge nodes
+* [x] Authority boundary: synchronization is data movement, not execution
+* [x] 71 new Phase 8 tests under `tests/distributed/`
+* [x] Full regression suite: 623 tests passing, 0 failures, 0 errors, 0 warnings
+* [x] Zero external runtime dependencies; zero network dependencies

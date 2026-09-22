@@ -33,6 +33,7 @@ class AdvancedCapabilityType(str, enum.Enum):
     VECTOR_RETRIEVAL = "vector_retrieval"
     REINFORCEMENT_LEARNING = "reinforcement_learning"
     SELF_MODIFYING_REASONING = "self_modifying_reasoning"
+    DIRECTIONAL_PROGRAMMING = "directional_programming"
 
 
 class ProviderLifecycleStatus(str, enum.Enum):
