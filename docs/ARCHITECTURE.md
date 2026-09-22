@@ -720,3 +720,412 @@ Phase 8 maintains:
 - 0 distributed databases or message brokers
 
 All distribution semantics are implemented via deterministic in-process abstractions suitable for testing and local-first operation.
+
+---
+
+## 13. Phase 9: Dynamic Cognitive Documents
+
+Phase 9 introduces deterministic, provider-neutral cognitive document projection. Documents are human-facing projections of existing structured cognitive state, never source of truth, authority, memory, persistence, or execution mechanisms.
+
+### 13.1 Core Invariant
+
+```text
+Document  ≠  Source of Truth  ≠  Authority  ≠  Memory  ≠  Execution
+```
+
+Cognitive documents are read-only projections. They carry no epistemic weight, carry no decision authority, and never alter underlying cognitive structures. Document generation is advisory-only and side-effect free.
+
+### 13.2 Document Layer Position
+
+```text
+                     ┌───────────────────────────────┐
+                     │  Structured Cognitive State   │
+                     │  (Artifacts, Observations,    │
+                     │   Claims, Evidence, Reasoning) │
+                     └───────────────┬───────────────┘
+                                     │ 13.2.1 Read-only access
+                                     ▼
+                     ┌───────────────────────────────┐
+                     │  Deterministic Document       │
+                     │  Projection Layer             │
+                     │  (project(), refresh(), diff)  │
+                     └───────────────┬───────────────┘
+                                     │ 13.2.2 Human-facing output
+                                     ▼
+                     ┌───────────────────────────────┐
+                     │  Dynamic Cognitive Document   │
+                     │  (sections, references,       │
+                     │   versions, provenance)       │
+                     └───────────────────────────────┘
+```
+
+The document layer has no write path into structured cognitive state.
+
+### 13.3 Document Specification
+
+A `DocumentSpecification` declares the structure and intent of a document without prescribing implementation details.
+
+```text
+DocumentSpecification
+  ├── specification_id: str
+  ├── schema_version: str
+  ├── created_at: str
+  ├── document_type: str
+  ├── title: str
+  ├── requested_artifacts: tuple[DocumentReference, ...]
+  ├── requested_sections: tuple[SectionSpecification, ...]
+  ├── filters: dict[str, Any] | None
+  ├── ordering: tuple[str, ...] | None
+  ├── context_scope: dict[str, Any] | None
+  ├── attention_scope: dict[str, Any] | None
+  ├── provenance_visibility: bool
+  ├── epistemic_visibility: bool
+  ├── conflict_visibility: bool
+  ├── residual_visibility: bool
+  └── provenance: ProvenanceRecord
+
+SectionSpecification
+  ├── section_type: SectionType
+  ├── title: str
+  ├── artifact_types: tuple[str, ...]
+  ├── filters: dict[str, Any] | None
+  ├── ordering: tuple[str, ...] | None
+  └── metadata: dict[str, Any]
+```
+
+A specification describes **what should be represented**, not how to compute it. It aligns with the Directional Programming architecture: declarative intent, not imperative script.
+
+### 13.4 Section Types
+
+Documents are composed of typed sections. Section types are declarative; their rendering is provider-neutral and implementation-defined.
+
+```text
+SectionType
+  ├── TEXT
+  ├── TABLE
+  ├── METRICS
+  ├── OBSERVATIONS
+  ├── EVIDENCE
+  ├── HYPOTHESES
+  ├── CLAIMS
+  ├── REASONING
+  ├── DECISIONS
+  ├── DIRECTION
+  ├── CONFLICTS
+  ├── PROVENANCE
+  └── RESIDUALS
+```
+
+### 13.5 Document Projection
+
+`DeterministicDocumentProjection` performs read-only, reproducible projection of structured cognitive state into a `DynamicDocument`.
+
+```text
+DeterministicDocumentProjection
+  ├── project(specification, cognitive_state) -> DynamicDocument
+  ├── refresh(document, specification, cognitive_state) -> DynamicDocument
+  └── diff(old_version, new_version) -> DocumentChange
+```
+
+Projection properties:
+- **Deterministic**: identical inputs always produce identical output
+- **Read-only**: projection never mutates source state
+- **Reproducible**: same specification + same state = same document
+- **Provider-neutral**: projection logic contains no AI/ML or network dependency
+
+### 13.6 Document Structure
+
+```text
+DynamicDocument
+  ├── id: str
+  ├── schema_version: str
+  ├── created_at: str
+  ├── document_version: str
+  ├── title: str
+  ├── document_type: str
+  ├── source_references: tuple[DocumentReference, ...]
+  ├── sections: tuple[DocumentSection, ...]
+  ├── provenance: ProvenanceRecord
+  └── metadata: dict[str, Any]
+
+DocumentSection
+  ├── section_id: str
+  ├── section_type: SectionType
+  ├── title: str
+  ├── content: tuple[SectionContent, ...]
+  ├── ordering: tuple[str, ...] | None
+  ├── filters: dict[str, Any] | None
+  ├── provenance: ProvenanceRecord
+  └── metadata: dict[str, Any]
+
+SectionContent
+  ├── content_id: str
+  ├── content_type: str
+  ├── reference: DocumentReference | None
+  ├── text: str | None
+  ├── data: tuple[tuple[str, Any], ...] | None
+  └── metadata: dict[str, Any]
+
+DocumentReference
+  ├── reference_id: str
+  ├── artifact_id: str
+  ├── artifact_type: str
+  ├── schema_version: str
+  ├── source_node_id: str | None
+  ├── origin_node_id: str | None
+  └── metadata: dict[str, Any]
+
+DocumentVersion
+  ├── version_id: str
+  ├── document_id: str
+  ├── document_version: str
+  ├── specification_hash: str
+  ├── state_hash: str
+  ├── created_at: str
+  ├── provenance: ProvenanceRecord
+  └── metadata: dict[str, Any]
+```
+
+### 13.7 Document Change Tracking
+
+Structural diffs between document versions are captured as `DocumentChange` records.
+
+```text
+DocumentChange
+  ├── change_id: str
+  ├── document_id: str
+  ├── from_version: str
+  ├── to_version: str
+  ├── changes: tuple[ChangeEntry, ...]
+  └── provenance: ProvenanceRecord
+
+ChangeEntry
+  ├── change_type: ChangeType
+  ├── path: str
+  ├── old_value: Any | None
+  ├── new_value: Any | None
+  └── metadata: dict[str, Any]
+
+ChangeType
+  ├── ADDED
+  ├── REMOVED
+  ├── CHANGED
+  └── UNCHANGED
+```
+
+### 13.8 Document Intent
+
+Human-requested document changes are captured as `DocumentIntent` artifacts. Intents are advisory proposals; they do not automatically mutate documents.
+
+```text
+DocumentIntent
+  ├── intent_id: str
+  ├── schema_version: str
+  ├── created_at: str
+  ├── document_id: str
+  ├── intent_type: IntentType
+  ├── parameters: tuple[tuple[str, Any], ...]
+  ├── rationale: str | None
+  ├── provenance: ProvenanceRecord
+  └── metadata: dict[str, Any]
+
+IntentType
+  ├── ADD_REFERENCE
+  ├── REMOVE_REFERENCE
+  ├── CHANGE_SECTION
+  ├── CHANGE_FILTER
+  ├── CHANGE_ORDER
+  ├── UPDATE_DIRECTION
+  ├── ANNOTATE
+  ├── REQUEST_REFRESH
+  └── REQUEST_PROJECTION
+```
+
+### 13.9 Document Service
+
+`DocumentService` provides the operational interface for document projection, refresh, and diff.
+
+```text
+DocumentService
+  ├── project(specification, memory_context=None, conflicts=None) -> DynamicDocument
+  ├── refresh(specification, document, memory_context=None, conflicts=None) -> DynamicDocument
+  ├── diff(from_document, to_document) -> DocumentChange
+  ├── version(document, specification_hash="", state_hash="") -> DocumentVersion
+  ├── get_document(document_id) -> DynamicDocument | None
+  └── get_versions(document_id) -> list[DocumentVersion]
+```
+
+### 13.10 Document Provider
+
+`DeterministicMockDocumentProvider` integrates the document layer into the `CapabilityRegistry` as a first-class capability.
+
+```text
+CapabilityType
+  ├── ...
+  ├── DYNAMIC_DOCUMENT  (new in Phase 9)
+  └── ...
+
+DeterministicMockDocumentProvider
+  ├── descriptor: CapabilityDescriptor
+  ├── project(specification, memory_context=None, conflicts=None) -> DynamicDocument
+```
+
+### 13.11 Contradiction and Conflict Preservation
+
+Documents preserve contradictions and conflicts from underlying cognitive state without silent selection or resolution.
+
+```text
+Observations section
+  ├── may contain CONFLICTING observations
+  └── never selects a "winner"
+
+Evidence section
+  ├── may contain SUPPORT and REFUTE evidence
+  └── both remain visible
+
+Claims section
+  ├── may contain contradictory claims
+  └── epistemic status remains explicit
+
+Conflicts section
+  └── surfaces CognitiveConflict artifacts verbatim
+```
+
+### 13.12 Epistemic Preservation
+
+Document sections preserve the epistemic status of underlying artifacts without promotion or demotion.
+
+```text
+EpistemicStatus preserved in documents
+  ├── UNKNOWN → rendered as UNKNOWN
+  ├── HYPOTHESIS → rendered as HYPOTHESIS (never as FACT)
+  ├── REFUTED → rendered as REFUTED (never removed)
+  ├── SUPPORTED → rendered as SUPPORTED
+  └── UNRESOLVED → rendered as UNRESOLVED
+```
+
+### 13.13 Zero Dependencies
+
+Phase 9 maintains:
+- Python >= 3.12
+- 0 external runtime dependencies
+- 0 network dependencies
+- 0 AI/ML frameworks
+
+All document projection is deterministic in-process logic.
+
+### 13.14 Acceptance Criteria
+
+- `DocumentSpecification`, `SectionSpecification` declare projection intent
+- `DynamicDocument` is a pure projection of existing cognitive state
+- `DeterministicDocumentProjection` produces reproducible documents
+- `DocumentService` supports project, refresh, diff, and version tracking
+- `DocumentIntent` captures human-requested changes as advisory proposals
+- `DocumentChange` captures structural version diffs
+- Contradictions and epistemic states are preserved without silent selection
+- `DeterministicMockDocumentProvider` integrates via `CapabilityType.DYNAMIC_DOCUMENT`
+- 77 new tests under `tests/documents/`
+- Zero regressions in existing test suite
+- 0 external runtime dependencies
+
+---
+
+## 14. Phase 10: Integrated Cognitive Loop
+
+### 14.1 Overview
+
+Phase 10 composes existing Phase 0–9 subsystems into a complete, deterministic, auditable end-to-end cognitive cycle via orchestrator only. No new cognitive engines, reasoning strategies, memory stores, or persistence mechanisms are introduced.
+
+### 14.2 Loop Topology
+
+```text
+Observation → Experience → Persistence → Memory → Recall → Context → Attention → Reasoning → Epistemic Evaluation → Directional Proposal/Decision → Dynamic Document → Human/Domain Authority → Outcome → Experience
+```
+
+### 14.3 Core Components
+
+- `DeterministicCognitiveLoop` (`src/cognitia/integration/loop.py`): Orchestrator implementing `CognitiveLoop` protocol
+- `CognitiveLoopResult` (`src/cognitia/integration/types.py`): Immutable result encapsulating all produced artifact identities and reconstructable provenance chain
+- Integration package: `src/cognitia/integration/`
+
+### 14.4 Subsystem Composition
+
+The orchestrator composes existing in-memory reference implementations:
+- `InMemoryPersistenceStore` for object and event persistence
+- `InMemoryMemoryStore` for contextual memory retrieval
+- `InMemoryRecallEngine` for experience recall
+- `DeterministicContextAssembler` for context assembly
+- `DeterministicAttentionEngine` for attention allocation
+- `DeterministicReasoningEngine` for reasoning execution
+- `InMemoryEpistemicService` for epistemic evaluation
+- `InMemoryDirectionalService` for directional programming
+- `DocumentService` for document projection
+- `DeterministicMockDecisionProvider` for advisory decisions
+- `InMemoryRuleStore` for rule-based reasoning
+
+### 14.5 Identity Preservation
+
+All canonical identities survive the loop:
+- `observation_id` → `Observation.id`
+- `experience_id` → `ExperienceRecord.id`
+- `reasoning_trace_id` → `ReasoningTrace.id`
+- `proposal_id` → `Proposal.id`
+- `decision_id` → `Decision.id`
+- `document_id` → `DynamicDocument.id`
+
+Verified boundaries:
+- `document_id` ≠ `artifact_id`
+- `node_id` ≠ `artifact_id`
+- `document_version` ≠ `artifact_version`
+
+### 14.6 Provenance Chain
+
+The provenance chain is reconstructable through the entire loop using existing `ProvenanceRecord` semantics. Each artifact's provenance records its derivation from prior artifacts in the loop sequence.
+
+### 14.7 Loop Invariants
+
+Phase 10 preserves all critical invariants:
+- Observation ≠ Experience
+- Persistence ≠ Memory
+- Memory ≠ Recall
+- Recall ≠ Context
+- Context ≠ Attention
+- Attention ≠ Reasoning
+- Reasoning ≠ Truth
+- Epistemic Status ≠ Confidence
+- Proposal ≠ Action
+- Decision ≠ Execution
+- Document ≠ Source of Truth
+- Outcome ≠ Proposal
+- Cognition ≠ Domain Authority
+- Distributed Cognition ≠ Distributed Authority
+- Plasticity ≠ Autonomous Mutation
+
+### 14.8 Authority Boundary
+
+Cognitia reasons, remembers, evaluates, proposes, and documents. Cognitia does NOT execute domain actions. Proposal ≠ Action, Decision ≠ Execution, Document ≠ Command.
+
+### 14.9 Zero Dependencies
+
+Phase 10 maintains:
+- Python >= 3.12
+- 0 external runtime dependencies
+- 0 network dependencies
+- 0 AI/ML frameworks
+
+All loop execution is deterministic in-process logic.
+
+### 14.10 Acceptance Criteria
+
+- `DeterministicCognitiveLoop` executes complete observation-to-outcome cycle
+- `CognitiveLoopResult` captures all artifact identities and provenance chain
+- Multi-cycle recall retrieval works (Cycle 2 retrieves Cycle 1 experience)
+- Contradiction preservation through full loop
+- Failure isolation (if recall fails, no fabricated context/reasoning)
+- Distributed cognition compatibility (node_id/artifact_id distinct)
+- Plasticity remains governed; not automatically activated
+- 14 new integration tests under `tests/integration/test_cognitive_loop.py`
+- Zero regressions in existing test suite
+- 0 external runtime dependencies
+
+---

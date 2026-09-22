@@ -188,3 +188,74 @@
 * [x] 71 new Phase 8 tests under `tests/distributed/`
 * [x] Full regression suite: 623 tests passing, 0 failures, 0 errors, 0 warnings
 * [x] Zero external runtime dependencies; zero network dependencies
+
+---
+
+## Phase 8.1: Distributed Contract Reconciliation (Completed)
+* [x] Baseline verification: 623 passed, 0 failed, 0 errors, 0 warnings
+* [x] Contract gap analysis: filled missing sections in `distributed-cognition-contract.md`
+* [x] Added Section 15 (Contract Cross-Reference)
+* [x] Added Section 8.3 (Conflict Preservation)
+* [x] Added Section 7.3 (Partial Synchronization)
+* [x] Added Section 16 (Ordering Semantics)
+* [x] Added 1 contract-level test: `test_processing_node_tracked_separately_from_origin`
+* [x] Final regression: 624 passed, 0 failed, 0 errors, 0 warnings
+* [x] All 29 acceptance criteria satisfied
+
+---
+
+## Phase 9: Dynamic Cognitive Documents (Completed)
+* [x] Establish dynamic cognitive document contract (`contracts/dynamic-cognitive-document-contract.md`)
+* [x] Define `DynamicDocument`, `DocumentSection`, `SectionContent`, `DocumentReference`, `DocumentVersion`
+* [x] Define `DocumentSpecification`, `SectionSpecification` (declarative projection intent)
+* [x] Define `DocumentIntent`, `IntentType` (human-requested document changes)
+* [x] Define `DocumentChange`, `ChangeEntry`, `ChangeType` (structural version diff)
+* [x] Define `SectionType` enum (TEXT, TABLE, METRICS, OBSERVATIONS, EVIDENCE, HYPOTHESES, CLAIMS, REASONING, DECISIONS, DIRECTION, CONFLICTS, PROVENANCE, RESIDUALS)
+* [x] Implement `DeterministicDocumentProjection` (read-only, reproducible projection)
+* [x] Implement `DocumentService` and `InMemoryDocumentService` (project, refresh, diff, version)
+* [x] Implement `DeterministicMockDocumentProvider` integrating with `CapabilityRegistry`
+* [x] Register `CapabilityType.DYNAMIC_DOCUMENT`
+* [x] Core invariant: document is projection, never source of truth, authority, memory, or execution
+* [x] Preserve contradictions and conflicts without silent selection
+* [x] Preserve epistemic states without promotion
+* [x] 77 new Phase 9 tests under `tests/documents/`
+* [x] Full regression suite: 701 tests passing, 0 failures, 0 errors, 0 warnings
+* [x] Zero external runtime dependencies; zero network dependencies
+
+---
+
+## Phase 9.1: Dynamic Cognitive Document Contract Reconciliation & Freeze (Completed)
+* [x] Baseline verification: 701 passed, 0 failed, 0 errors, 0 warnings
+* [x] Verified all authoritative contracts referenced by `dynamic-cognitive-document-contract.md`
+* [x] Reconciled `docs/ARCHITECTURE.md` Section 13 with actual implementation
+* [x] Reconciled `docs/GLOSSARY.md` Phase 9 terminology
+* [x] Verified identity boundaries: `document_id` ≠ `artifact_id`, document versioning ≠ artifact versioning
+* [x] Verified projection semantics: deterministic, read-only, provenance-aware, versioned, explainable
+* [x] Verified epistemic preservation: no silent transitions (e.g., HYPOTHESIS → FACT)
+* [x] Verified contradiction preservation: no central/latest/highest-confidence-wins semantics
+* [x] Verified provenance semantics: `DocumentReference` preserves artifact identity
+* [x] Verified distributed cognition compatibility: `source_node_id`/`origin_node_id` distinct
+* [x] Verified capability boundary: `CapabilityType.DYNAMIC_DOCUMENT` follows existing SPI
+* [x] Verified dependency audit: `pyproject.toml` has `dependencies = []`
+* [x] Added invariant tests for document identity, non-mutation, determinism, and boundaries
+* [x] Full regression suite: 701 tests passing, 0 failures, 0 errors, 0 warnings
+* [x] `pytest -q -W error` clean
+* [x] `git diff --check` clean
+* [x] Contract frozen: `docs/ROADMAP.md` marked COMPLETE/FROZEN
+
+---
+
+## Phase 10: Integrated Cognitive Loop (Completed)
+* [x] Composed existing Phase 0–9 subsystems via orchestrator only; no new cognitive engines
+* [x] Established `DeterministicCognitiveLoop` orchestrator in `src/cognitia/integration/loop.py`
+* [x] Defined `CognitiveLoopResult` in `src/cognitia/integration/types.py` with reconstructable provenance chain
+* [x] Verified canonical identity survival through loop: observation_id, experience_id, reasoning_trace_id, proposal_id, decision_id, document_id
+* [x] Verified identity boundaries: document_id ≠ artifact_id, node_id ≠ artifact_id, document_version ≠ artifact_version
+* [x] Verified provenance chain reconstructable using existing `ProvenanceRecord` semantics
+* [x] Preserved loop invariants: Observation ≠ Experience, Persistence ≠ Memory, Memory ≠ Recall, Recall ≠ Context, Context ≠ Attention, Attention ≠ Reasoning, Reasoning ≠ Truth, Epistemic Status ≠ Confidence, Proposal ≠ Action, Decision ≠ Execution, Document ≠ Source of Truth, Outcome ≠ Proposal, Cognition ≠ Domain Authority, Distributed Cognition ≠ Distributed Authority, Plasticity ≠ Autonomous Mutation
+* [x] Maintained zero external runtime dependencies, zero network dependencies, zero AI/ML frameworks
+* [x] 14 new Phase 10 integration tests under `tests/integration/test_cognitive_loop.py`
+* [x] Full regression suite: 721 tests passing, 0 failures, 0 errors, 0 warnings
+* [x] `pytest -q -W error` clean
+* [x] `git diff --check` clean
+* [x] `dependencies = []` preserved in `pyproject.toml`

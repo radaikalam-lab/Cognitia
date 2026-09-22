@@ -526,6 +526,22 @@ class TestProvenancePreservation:
         assert env.origin_node_id == "edge_a"
         assert env.source_node_id == "edge_b"
 
+    def test_processing_node_tracked_separately_from_origin(self) -> None:
+        transport = InMemoryCognitiveTransport()
+        obs = Observation(id="obs_proc", source_id="edge_a")
+        env = CognitiveEnvelope(
+            artifact_type="observation",
+            artifact_id="obs_proc",
+            source_node_id="edge_a",
+            origin_node_id="edge_a",
+            payload=obs,
+        )
+        transport.send(env, "central")
+        received = transport.receive("central")
+        assert received is not None
+        assert received.origin_node_id == "edge_a"
+        assert received.source_node_id == "edge_a"
+
     def test_transport_metadata_distinct_from_provenance(self) -> None:
         env = _make_envelope()
         assert env.provenance.source_type.value == "deterministic_rule"

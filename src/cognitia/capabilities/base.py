@@ -24,6 +24,7 @@ class CapabilityType(str, enum.Enum):
     CLASSIFICATION = "classification"
     ANOMALY_DETECTION = "anomaly_detection"
     SIMULATION = "simulation"
+    DYNAMIC_DOCUMENT = "dynamic_document"
 
 
 @dataclass(frozen=True)

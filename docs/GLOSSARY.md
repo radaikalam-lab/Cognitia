@@ -221,3 +221,124 @@ The property that edge nodes can operate fully without central connectivity, pre
 
 ### Idempotent Ingestion
 The property that receiving the same cognitive envelope multiple times produces no duplicate cognitive effect.
+
+---
+
+### Dynamic Cognitive Document
+A human-facing, read-only projection of existing structured cognitive state (`DynamicDocument`). Documents are never source of truth, authority, memory, persistence, or execution mechanisms.
+
+### Document Projection
+The deterministic transformation of structured cognitive state into a `DynamicDocument` (`DeterministicDocumentProjection`). Projection is read-only, reproducible, and side-effect free.
+
+### Document Specification
+A declarative intent record (`DocumentSpecification`) describing the structure and content of a desired document without prescribing implementation details.
+
+### Section Specification
+A declaration of a single document section (`SectionSpecification`) including its type, title, artifact type filters, ordering, and metadata.
+
+### Section Type
+A classification of document section content: `TEXT`, `TABLE`, `METRICS`, `OBSERVATIONS`, `EVIDENCE`, `HYPOTHESES`, `CLAIMS`, `REASONING`, `DECISIONS`, `DIRECTION`, `CONFLICTS`, `PROVENANCE`, `RESIDUALS`.
+
+### Document Section
+An immutable structural unit within a `DynamicDocument` (`DocumentSection`) containing typed content and provenance.
+
+### Section Content
+The typed payload of a `DocumentSection` (`SectionContent`) including content type identifier, optional document reference, text, data tuples, and metadata.
+
+### Document Reference
+An explicit link from a document section to a cognitive artifact (`DocumentReference`). References preserve artifact identity and provenance.
+
+### Document Version
+An immutable version record (`DocumentVersion`) capturing a point-in-time snapshot of a document's structure and specification.
+
+### Document Change
+A structural diff between two document versions (`DocumentChange`) composed of ordered `ChangeEntry` records.
+
+### Change Entry
+A single atomic change record (`ChangeEntry`) describing what changed between two document versions.
+
+### Change Type
+Classification of document structural changes: `ADDED`, `REMOVED`, `CHANGED`, `UNCHANGED`.
+
+### Document Intent
+An advisory proposal (`DocumentIntent`) for a human-requested document change. Intents carry provenance from a human source; they do not automatically mutate documents.
+
+### Intent Type
+Classification of document intents: `ADD_REFERENCE`, `REMOVE_REFERENCE`, `CHANGE_SECTION`, `CHANGE_FILTER`, `CHANGE_ORDER`, `UPDATE_DIRECTION`, `ANNOTATE`, `REQUEST_REFRESH`, `REQUEST_PROJECTION`.
+
+### Document Service
+The operational interface (`DocumentService`) for document projection, refresh, versioning, and diffing.
+
+### Document Provider
+A capability provider (`DeterministicMockDocumentProvider`) implementing document projection and registered via `CapabilityType.DYNAMIC_DOCUMENT`.
+
+### Document ≠ Source of Truth
+The fundamental invariant that documents are projections of existing cognitive state, never authoritative records. Underlying cognitive artifacts remain the sole source of truth.
+
+### Document ≠ Authority
+Documents carry no decision authority, no epistemic promotion power, and no execution capability. They are human-facing representations only.
+
+### Deterministic Document Projection
+The property that identical document specifications and identical cognitive state always produce identical documents, enabling reproducibility and auditability.
+
+### Contradiction Preservation in Documents
+The property that documents surface conflicting observations, evidence, claims, and conflicts from underlying cognitive state without silent selection or resolution.
+
+### Epistemic Preservation in Documents
+The property that document rendering preserves the epistemic status of underlying artifacts without promotion (e.g., HYPOTHESIS never rendered as FACT) or demotion.
+
+---
+
+### Cognitive Loop
+An end-to-end cognitive cycle composing existing subsystems into a deterministic, auditable pipeline: Observation → Experience → Persistence → Memory → Recall → Context → Attention → Reasoning → Epistemic Evaluation → Directional Proposal/Decision → Dynamic Document → Human/Domain Authority → Outcome → Experience.
+
+### Cognitive Loop Result
+An immutable result (`CognitiveLoopResult`) encapsulating all produced artifact identities and the reconstructable provenance chain from a single loop execution.
+
+### Deterministic Cognitive Loop
+The orchestrator (`DeterministicCognitiveLoop`) implementing the `CognitiveLoop` protocol, composing existing in-memory reference implementations via orchestrator only.
+
+### Cognitive Loop Orchestrator
+A provider-neutral composition layer that sequences existing cognitive services without introducing new reasoning, memory, epistemic, persistence, document, or learning engines.
+
+### Loop Invariant
+A critical boundary preserved throughout the cognitive loop, such as Observation ≠ Experience, Reasoning ≠ Truth, Proposal ≠ Action, Document ≠ Source of Truth, Cognition ≠ Domain Authority.
+
+### Observation ≠ Experience
+The invariant that raw observation records and derived episodic experience records remain distinct entities with separate identities and provenance.
+
+### Memory ≠ Recall
+The invariant that the memory store (durable substrate) and recall engine (selective retrieval mechanism) are distinct components with separate responsibilities.
+
+### Context ≠ Attention
+The invariant that assembled cognitive context and attention-selected items are distinct representations; attention does not mutate context.
+
+### Attention ≠ Reasoning
+The invariant that attention allocation (budget enforcement, ranking) and reasoning execution (derivation, trace generation) are separate cognitive functions.
+
+### Reasoning ≠ Truth
+The invariant that reasoning produces derivations and traces, never authoritative truth claims. Reasoning outputs remain advisory and provenance-tagged.
+
+### Epistemic Status ≠ Confidence
+The invariant that epistemic classification (UNKNOWN, HYPOTHESIS, SUPPORTED, REFUTED) and confidence scores are distinct dimensions; status transitions follow governance rules, not automatic confidence thresholds.
+
+### Proposal ≠ Action
+The invariant that cognitive proposals are advisory recommendations only; they carry no execution authority and do not mutate domain state.
+
+### Decision ≠ Execution
+The invariant that decisions are advisory recommendations; execution authority resides solely with the human/domain authority plane.
+
+### Document ≠ Source of Truth
+The invariant that dynamic documents are projections of existing cognitive state; underlying artifacts remain the sole source of truth.
+
+### Outcome ≠ Proposal
+The invariant that outcomes are recorded feedback from domain execution, not cognitive proposals. Outcomes extend experience but do not automatically trigger new reasoning.
+
+### Cognition ≠ Domain Authority
+The invariant that Cognitia provides cognitive infrastructure (reasoning, memory, recall, proposals, documents) but never exercises domain authority, executes actions, or controls physical systems.
+
+### Distributed Cognition ≠ Distributed Authority
+The invariant that distributed cognitive processing (multi-node recall, context assembly) does not imply distributed authority. Authority remains centralized in the human/domain plane.
+
+### Plasticity ≠ Autonomous Mutation
+The invariant that memory plasticity (human-governed versioning, supersession, retirement) requires explicit human approval and never operates autonomously.

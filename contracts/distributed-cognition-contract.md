@@ -125,6 +125,19 @@ An edge runtime MUST remain fully operational when central is unavailable.
 
 Receiving the same envelope twice must NOT create two semantic artifacts. Canonical artifact identity is used for deduplication.
 
+### 7.3 Partial Synchronization
+
+Synchronization may be partially successful. For example:
+
+```text
+A → synchronized
+B → synchronized
+C → failed
+D → pending
+```
+
+A and B must not be resent as new semantic artifacts merely because C failed. The implementation's idempotency mechanism remains authoritative.
+
 ---
 
 ## 8. Conflict Representation
@@ -163,7 +176,18 @@ ConflictStatus
   └── ESCALATED
 ```
 
+### 8.3 Conflict Preservation
+
 Conflicts must remain visible. Epistemic conflicts must not be silently resolved.
+
+Explicitly:
+```text
+Central   ≠ automatically correct
+Latest    ≠ automatically correct
+Edge      ≠ automatically stale
+```
+
+Conflict resolution must remain explicit and auditable.
 
 ---
 
@@ -203,6 +227,15 @@ Central and edge runtimes share the same cognitive substrate. They differ only i
 
 Synchronization does not grant execution authority. An edge node receiving a `DirectionalProposal` does not acquire the authority to execute it. Authority remains with the domain application.
 
+Explicitly:
+```text
+Central Cognitia ≠ domain authority
+Edge Cognitia   ≠ domain authority
+Synchronization ≠ command channel
+```
+
+Phase 8 must not create a distributed command authority. Cognition produces proposals and decisions; the consuming domain application retains final authority over physical reality, safety interlocks, and actuation.
+
 ---
 
 ## 12. Determinism
@@ -230,9 +263,46 @@ The `InMemoryCognitiveTransport` provides a deterministic in-process transport f
 
 ## 14. Integration Points
 
-- **Persistence**: Local persistence remains valid while disconnected.
-- **Provenance**: Origin node and processing node remain identifiable after synchronization.
-- **Providers**: Provider execution locality does not change capability semantics.
-- **Directional Programming**: Specifications and proposals cross node boundaries without semantic change.
-- **Reasoning**: Traces preserve originating node, inputs, and provenance across nodes.
-- **Plasticity**: Candidate artifacts synchronize without automatic activation or model mutation.
+- **Persistence**: Local persistence remains valid while disconnected. Authoritative contract: `contracts/persistence-contract.md`.
+- **Provenance**: Origin node and processing node remain identifiable after synchronization. Authoritative contract: `contracts/provenance-contract.md`.
+- **Providers**: Provider execution locality does not change capability semantics. Authoritative contract: `contracts/capability-contract.md`.
+- **Directional Programming**: Specifications and proposals cross node boundaries without semantic change. Authoritative contract: `contracts/directional-programming-contract.md`.
+- **Reasoning**: Traces preserve originating node, inputs, and provenance across nodes. Authoritative contract: `contracts/reasoning-contract.md`.
+- **Plasticity**: Candidate artifacts synchronize without automatic activation or model mutation. Authoritative contract: `contracts/memory-contract.md`.
+- **Cognitive ABI**: All distributed types follow canonical ABI identity, versioning, timestamp, and serialization rules. Authoritative contract: `contracts/cognitive-abi.md`.
+- **Authority Boundary**: Distribution does not create new authority. Authoritative contract: `contracts/authority-boundary.md`.
+
+---
+
+## 15. Contract Cross-Reference
+
+The Distributed & Edge Cognition Contract is normative for distribution semantics. For all other cognitive semantics, the following contracts remain authoritative:
+
+| Concept | Authoritative Contract |
+|---------|----------------------|
+| Canonical types, identity, serialization | `contracts/cognitive-abi.md` |
+| Persistence, Event Journal, Object Store | `contracts/persistence-contract.md` |
+| Provenance, lineage, checksums | `contracts/provenance-contract.md` |
+| Capability advertisement, provider boundary | `contracts/capability-contract.md` |
+| Model registry, versioning | `contracts/model-registry-contract.md` |
+| Reasoning strategies, traces, residuals | `contracts/reasoning-contract.md` |
+| Epistemic states, transitions, evaluation | `contracts/epistemic-contract.md` |
+| Authority boundary, domain separation | `contracts/authority-boundary.md` |
+| Directional specifications, proposals, residuals | `contracts/directional-programming-contract.md` |
+| Memory, recall, consolidation | `contracts/memory-contract.md` |
+| Plasticity operators, candidate artifacts | `contracts/memory-contract.md` |
+
+---
+
+## 16. Ordering Semantics
+
+Distributed arrival order is not automatically scientific/event order. The contract preserves existing:
+
+```text
+created_at
+source node
+artifact identity
+local sequence information where applicable
+```
+
+Network arrival order MUST NOT be treated as a general substitute for event order. Core cognition MUST NOT silently depend on transport arrival order.
