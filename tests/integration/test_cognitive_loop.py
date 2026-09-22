@@ -227,3 +227,136 @@ class TestCognitiveLoopProvenance:
             if isinstance(obj, Observation):
                 continue
             assert hasattr(obj, "provenance"), f"{type(obj).__name__} missing provenance"
+
+
+class TestCognitiveLoopReconciliation:
+    def test_repeated_execution_is_structurally_deterministic(self) -> None:
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "det", "value": 1.0},
+        )
+        loop_a = DeterministicCognitiveLoop()
+        result_a = loop_a.execute(observation, episode_id="det_ep")
+        loop_b = DeterministicCognitiveLoop()
+        result_b = loop_b.execute(observation, episode_id="det_ep")
+        assert len(result_a.provenance_chain) == len(result_b.provenance_chain)
+        assert result_a.observation_id == result_b.observation_id
+        assert result_a.experience_id != result_b.experience_id
+        assert result_a.reasoning_trace_id != result_b.reasoning_trace_id
+        assert result_a.decision_id != result_b.decision_id
+        assert result_a.document_id != result_b.document_id
+
+    def test_empty_recall_does_not_fabricate_context(self) -> None:
+        class EmptyRecallEngine:
+            def recall(self, query):
+                from cognitia.recall.types import RecallResult
+                return RecallResult(query=query)
+
+        loop = DeterministicCognitiveLoop(recall_engine=EmptyRecallEngine())
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "empty_recall", "value": 2.0},
+        )
+        result = loop.execute(observation, episode_id="empty_recall_ep")
+        assert result.observation_id == observation.id
+        assert result.experience_id != ""
+        assert result.decision_id is not None
+
+    def test_empty_memory_does_not_fabricate_context(self) -> None:
+        class EmptyMemoryStore:
+            def get_context(self, query):
+                from cognitia.memory.types import MemoryContext
+                return MemoryContext(query=query)
+
+        loop = DeterministicCognitiveLoop(memory_store=EmptyMemoryStore())
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "empty_mem", "value": 3.0},
+        )
+        result = loop.execute(observation, episode_id="empty_mem_ep")
+        assert result.observation_id == observation.id
+        assert result.experience_id != ""
+        assert result.decision_id is not None
+
+    def test_cycle_n_does_not_mutate_cycle_n_minus_one(self) -> None:
+        store = InMemoryPersistenceStore()
+        loop = DeterministicCognitiveLoop(persistence_store=store)
+        obs_a = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "immut", "value": 10.0},
+        )
+        result_a = loop.execute(obs_a, episode_id="immut_ep")
+        obs_b = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "immut", "value": 20.0},
+        )
+        result_b = loop.execute(obs_b, episode_id="immut_ep")
+        obs_a_copy = store.get_object(result_a.observation_id)
+        assert obs_a_copy is not None
+        assert obs_a_copy.payload.get("value") == 10.0
+
+    def test_outcome_available_for_future_recall(self) -> None:
+        store = InMemoryPersistenceStore()
+        loop = DeterministicCognitiveLoop(persistence_store=store)
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "outcome_recall", "value": 5.0},
+        )
+        result = loop.execute(observation, episode_id="outcome_ep")
+        outcome = Outcome(
+            status="success",
+            metrics={"value": 5.0},
+        )
+        loop.accept_outcome(outcome, result, episode_id="outcome_ep")
+        recalled = store.get_object(outcome.id)
+        assert recalled is not None
+        assert recalled.id == outcome.id
+        assert isinstance(recalled, Outcome)
+
+    def test_reasoning_does_not_auto_promote_epistemic_state(self) -> None:
+        loop = DeterministicCognitiveLoop()
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "epi_bound", "value": 6.0},
+        )
+        result = loop.execute(observation, episode_id="epi_bound_ep")
+        assert result.reasoning_trace_id != ""
+        decision = loop._decision.propose_decision(observation)
+        assert decision.proposal_type == "deterministic_policy_proposal"
+
+    def test_document_is_read_only_projection(self) -> None:
+        loop = DeterministicCognitiveLoop()
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "doc_proj", "value": 7.0},
+        )
+        result = loop.execute(observation, episode_id="doc_proj_ep")
+        doc = loop._documents.get_document(result.document_id)
+        assert doc is not None
+        assert not hasattr(doc, "execute")
+        assert not hasattr(doc, "actuate")
+        assert not hasattr(doc, "mutate")
+
+    def test_plasticity_not_activated(self) -> None:
+        store = InMemoryPersistenceStore()
+        loop = DeterministicCognitiveLoop(persistence_store=store)
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "plasticity", "value": 8.0},
+        )
+        result = loop.execute(observation, episode_id="plasticity_ep")
+        assert result.observation_id != ""
+        assert result.experience_id != ""
+        for obj in store.list_all_objects():
+            assert not hasattr(obj, "plasticity_operator_id")
+
+    def test_node_id_distinct_from_artifact_id(self) -> None:
+        loop = DeterministicCognitiveLoop()
+        observation = Observation(
+            source_id="test_sensor",
+            payload={"subject_id": "dist_node", "value": 9.0},
+        )
+        result = loop.execute(observation, episode_id="dist_ep")
+        assert result.observation_id != "loop_node"
+        assert result.experience_id != "loop_agent"
+        assert result.observation_id != result.document_id
