@@ -1110,3 +1110,169 @@ class TestProjectionInteractionContracts:
         assert result.architecture_candidate.interaction_contracts == ()
         assert result.scaffold_spec is not None
         assert result.scaffold_spec.interaction_contracts == ()
+
+
+class TestConflictDetectionSymmetry:
+    """Regression tests for CR-01: Symmetric, order-independent conflict detection."""
+
+    def test_conflict_detected_allow_then_prohibit(self) -> None:
+        provider = DeterministicProjectionProvider()
+        rule1 = DirectionalRule(
+            rule_id="RULE-1",
+            allowed_authorities=["admin"],
+            prohibited_authorities=[],
+        )
+        rule2 = DirectionalRule(
+            rule_id="RULE-2",
+            allowed_authorities=[],
+            prohibited_authorities=["admin"],
+        )
+        conflicts = provider.detect_conflicts([rule1, rule2])
+        assert len(conflicts) == 1
+        assert conflicts[0].governance_required is True
+        assert set(conflicts[0].rules_in_conflict) == {"RULE-1", "RULE-2"}
+        assert "admin" in conflicts[0].description
+
+    def test_conflict_detected_prohibit_then_allow(self) -> None:
+        provider = DeterministicProjectionProvider()
+        rule1 = DirectionalRule(
+            rule_id="RULE-1",
+            allowed_authorities=["admin"],
+            prohibited_authorities=[],
+        )
+        rule2 = DirectionalRule(
+            rule_id="RULE-2",
+            allowed_authorities=[],
+            prohibited_authorities=["admin"],
+        )
+        conflicts = provider.detect_conflicts([rule2, rule1])
+        assert len(conflicts) == 1
+        assert conflicts[0].governance_required is True
+        assert set(conflicts[0].rules_in_conflict) == {"RULE-1", "RULE-2"}
+        assert "admin" in conflicts[0].description
+
+    def test_conflict_detection_symmetry_invariant(self) -> None:
+        provider = DeterministicProjectionProvider()
+        rule1 = DirectionalRule(
+            rule_id="RULE-A",
+            allowed_authorities=["writer"],
+            prohibited_authorities=[],
+        )
+        rule2 = DirectionalRule(
+            rule_id="RULE-B",
+            allowed_authorities=[],
+            prohibited_authorities=["writer"],
+        )
+        c_ab = provider.detect_conflicts([rule1, rule2])
+        c_ba = provider.detect_conflicts([rule2, rule1])
+        assert len(c_ab) == len(c_ba) == 1
+        assert c_ab[0].governance_required == c_ba[0].governance_required is True
+        assert c_ab[0].severity == c_ba[0].severity == "high"
+        assert set(c_ab[0].rules_in_conflict) == set(c_ba[0].rules_in_conflict) == {"RULE-A", "RULE-B"}
+
+    def test_non_conflicting_rules_remain_clean(self) -> None:
+        provider = DeterministicProjectionProvider()
+        rule1 = DirectionalRule(
+            rule_id="RULE-1",
+            allowed_authorities=["reader"],
+            prohibited_authorities=["admin"],
+        )
+        rule2 = DirectionalRule(
+            rule_id="RULE-2",
+            allowed_authorities=["reader"],
+            prohibited_authorities=["admin"],
+        )
+        assert len(provider.detect_conflicts([rule1, rule2])) == 0
+        assert len(provider.detect_conflicts([rule2, rule1])) == 0
+
+    def test_multi_rule_no_duplicate_conflicts(self) -> None:
+        provider = DeterministicProjectionProvider()
+        rule1 = DirectionalRule(
+            rule_id="RULE-1",
+            allowed_authorities=["admin"],
+            prohibited_authorities=[],
+        )
+        rule2 = DirectionalRule(
+            rule_id="RULE-2",
+            allowed_authorities=[],
+            prohibited_authorities=["admin"],
+        )
+        rule3 = DirectionalRule(
+            rule_id="RULE-3",
+            allowed_authorities=["guest"],
+            prohibited_authorities=[],
+        )
+        conflicts_123 = provider.detect_conflicts([rule1, rule2, rule3])
+        conflicts_321 = provider.detect_conflicts([rule3, rule2, rule1])
+        assert len(conflicts_123) == 1
+        assert len(conflicts_321) == 1
+
+    def test_bidirectional_mutual_conflict(self) -> None:
+        provider = DeterministicProjectionProvider()
+        rule1 = DirectionalRule(
+            rule_id="RULE-1",
+            allowed_authorities=["auth_a"],
+            prohibited_authorities=["auth_b"],
+        )
+        rule2 = DirectionalRule(
+            rule_id="RULE-2",
+            allowed_authorities=["auth_b"],
+            prohibited_authorities=["auth_a"],
+        )
+        conflicts = provider.detect_conflicts([rule1, rule2])
+        assert len(conflicts) == 1
+        assert "auth_a" in conflicts[0].description
+        assert "auth_b" in conflicts[0].description
+
+
+class TestSpecificationIdentityStability:
+    """Regression tests for CR-04: Stable identity on specification updates."""
+
+    def test_add_rule_preserves_spec_id(self) -> None:
+        service = InMemoryProjectSpecService()
+        rule1 = _make_rule("R1")
+        spec = service.create_specification(rules=[rule1])
+        original_id = spec.id
+
+        rule2 = _make_rule("R2")
+        updated = service.add_rule(original_id, rule2)
+        assert updated.id == original_id
+
+    def test_get_specification_by_updated_id(self) -> None:
+        service = InMemoryProjectSpecService()
+        spec = service.create_specification(rules=[_make_rule("R1")])
+        updated = service.add_rule(spec.id, _make_rule("R2"))
+
+        retrieved = service.get_specification(updated.id)
+        assert retrieved is not None
+        assert retrieved.id == spec.id
+        assert len(retrieved.rules) == 2
+
+    def test_multiple_add_rules_maintain_stable_identity(self) -> None:
+        service = InMemoryProjectSpecService()
+        spec = service.create_specification(rules=[_make_rule("R1")])
+        init_id = spec.id
+
+        u1 = service.add_rule(init_id, _make_rule("R2"))
+        u2 = service.add_rule(init_id, _make_rule("R3"))
+        u3 = service.add_rule(init_id, _make_rule("R4"))
+
+        assert u1.id == init_id
+        assert u2.id == init_id
+        assert u3.id == init_id
+        assert len(u3.rules) == 4
+
+        specs_list = service.list_specifications()
+        assert len(specs_list) == 1
+        assert specs_list[0].id == init_id
+
+    def test_rule_registry_contains_all_added_rules(self) -> None:
+        service = InMemoryProjectSpecService()
+        spec = service.create_specification(rules=[_make_rule("R1")])
+        service.add_rule(spec.id, _make_rule("R2"))
+        service.add_rule(spec.id, _make_rule("R3"))
+
+        assert "R1" in service._rules
+        assert "R2" in service._rules
+        assert "R3" in service._rules
+

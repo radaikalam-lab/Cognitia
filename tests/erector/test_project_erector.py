@@ -423,3 +423,80 @@ class TestErectorDeterminism:
         first = manifest_path.read_text(encoding="utf-8")
         second = manifest_path.read_text(encoding="utf-8")
         assert first == second
+
+
+class TestErectorWindowsPathSanitization:
+    """Regression tests for CR-03: Windows filename and path sanitization."""
+
+    @pytest.mark.parametrize(
+        "unsafe_name,expected_substr",
+        [
+            ("prohibited:admin", "prohibited_admin"),
+            ("authority<admin>", "authority_admin_"),
+            ("authority>admin", "authority_admin"),
+            ('authority"admin', "authority_admin"),
+            ("authority|admin", "authority_admin"),
+            ("authority?admin", "authority_admin"),
+            ("authority*admin", "authority_admin"),
+            ("authority\\admin", "authority_admin"),
+            ("authority/admin", "authority_admin"),
+            ("../admin", "_admin"),
+            ("..\\admin", "_admin"),
+            ("NUL", "_NUL_"),
+            ("CON", "_CON_"),
+            ("COM1", "_COM1_"),
+            ("provider_boundary", "provider_boundary"),
+        ],
+    )
+    def test_safe_relative_path_sanitization(
+        self, unsafe_name: str, expected_substr: str, tmp_path: pathlib.Path
+    ) -> None:
+        erector = DeterministicProjectErector()
+        scaffold = ScaffoldSpec(
+            spec_id="scf-safe-test",
+            required_boundaries=[unsafe_name],
+        )
+        accepted = _make_accepted_scaffold(scaffold=scaffold)
+        target = tmp_path / f"project_{hash(unsafe_name)}"
+        result = erector.erect(accepted, str(target))
+        assert result.status == ErectionStatus.SUCCESS.value
+
+        boundary_artifacts = [
+            a for a in result.generated_artifacts if "boundaries/" in a.relative_path
+        ]
+        assert len(boundary_artifacts) == 1
+        artifact = boundary_artifacts[0]
+
+        # Invariant checks:
+        # 1. Path must be relative
+        assert not pathlib.Path(artifact.relative_path).is_absolute()
+        # 2. Path must not traverse outside target
+        full_path = (target / artifact.relative_path).resolve()
+        assert full_path.is_relative_to(target.resolve())
+        # 3. Path must not contain unescaped unsafe characters
+        for char in [":", "<", ">", '"', "|", "?", "*"]:
+            assert char not in artifact.relative_path
+        # 4. Expected sanitized substring must match
+        assert expected_substr in artifact.relative_path
+        # 5. File must exist on disk and be readable
+        assert full_path.exists()
+        assert full_path.is_file()
+
+    def test_empty_or_whitespace_name_sanitizes_to_unnamed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        erector = DeterministicProjectErector()
+        scaffold = ScaffoldSpec(
+            spec_id="scf-empty-name",
+            required_boundaries=["   "],
+        )
+        accepted = _make_accepted_scaffold(scaffold=scaffold)
+        target = tmp_path / "project_empty"
+        result = erector.erect(accepted, str(target))
+        assert result.status == ErectionStatus.SUCCESS.value
+        boundary_artifacts = [
+            a for a in result.generated_artifacts if "boundaries/" in a.relative_path
+        ]
+        assert len(boundary_artifacts) == 1
+        assert "unnamed.md" in boundary_artifacts[0].relative_path
+

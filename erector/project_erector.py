@@ -20,8 +20,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+}
 
 from cognitia.project_spec.types import ScaffoldSpec
 from erector.types import (
@@ -214,9 +221,14 @@ class DeterministicProjectErector:
         return target
 
     def _safe_relative_path(self, base: Path, name: str) -> str:
-        safe = name.strip().replace("..", "_").replace("/", "_").replace("\\", "_")
+        safe = name.strip()
+        safe = safe.replace("..", "_")
+        safe = re.sub(r'[\/\\:*?"<>|]+', '_', safe)
+        safe = safe.rstrip(". ")
         if not safe:
             safe = "unnamed"
+        if safe.upper() in _WINDOWS_RESERVED_NAMES:
+            safe = f"_{safe}_"
         return safe
 
     def _build_root_manifest(

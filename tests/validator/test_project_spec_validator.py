@@ -900,3 +900,124 @@ class TestValidatorInteractionContracts:
             and f.status == ValidationStatus.FAIL.value
             for f in result.findings
         )
+
+
+class TestTranslationBoundaryValidation:
+    """Regression tests for CR-02: Non-vacuous translation boundary validation."""
+
+    def test_empty_canonical_representation_fails_when_boundary_missing(self) -> None:
+        validator = DeterministicProjectSpecValidator()
+        contract = InteractionContract(
+            contract_id="IC-001",
+            boundary="external_gateway",
+            canonical_representation="",
+            translation_required=True,
+        )
+        rule = DirectionalRule(
+            rule_id="RULE-1",
+            interaction_contracts=[contract],
+        )
+        spec = DirectionalSpec(rules=[rule])
+        candidate = _make_candidate(
+            boundaries=("unrelated_boundary",),
+            interaction_contracts=("IC-001",),
+        )
+        result = validator.validate(specification=spec, candidate=candidate)
+        assert result.status == ValidationStatus.FAIL.value
+        finding = next(
+            f for f in result.findings if f.check == "translation_boundary_represented"
+        )
+        assert finding.status == ValidationStatus.FAIL.value
+
+    def test_represented_boundary_passes(self) -> None:
+        validator = DeterministicProjectSpecValidator()
+        contract = InteractionContract(
+            contract_id="IC-001",
+            boundary="external_gateway",
+            canonical_representation="",
+            translation_required=True,
+        )
+        rule = DirectionalRule(
+            rule_id="RULE-1",
+            interaction_contracts=[contract],
+        )
+        spec = DirectionalSpec(rules=[rule])
+        candidate = _make_candidate(
+            boundaries=("external_gateway_boundary",),
+            interaction_contracts=("IC-001",),
+        )
+        result = validator.validate(specification=spec, candidate=candidate)
+        finding = next(
+            f for f in result.findings if f.check == "translation_boundary_represented"
+        )
+        assert finding.status == ValidationStatus.PASS.value
+
+    def test_represented_canonical_representation_passes(self) -> None:
+        validator = DeterministicProjectSpecValidator()
+        contract = InteractionContract(
+            contract_id="IC-001",
+            boundary="missing_raw_boundary",
+            canonical_representation="canonical_msg",
+            translation_required=True,
+        )
+        rule = DirectionalRule(
+            rule_id="RULE-1",
+            interaction_contracts=[contract],
+        )
+        spec = DirectionalSpec(rules=[rule])
+        candidate = _make_candidate(
+            boundaries=("canonical_msg_boundary",),
+            interaction_contracts=("IC-001",),
+        )
+        result = validator.validate(specification=spec, candidate=candidate)
+        finding = next(
+            f for f in result.findings if f.check == "translation_boundary_represented"
+        )
+        assert finding.status == ValidationStatus.PASS.value
+
+    def test_translation_not_required_does_not_check_boundary(self) -> None:
+        validator = DeterministicProjectSpecValidator()
+        contract = InteractionContract(
+            contract_id="IC-001",
+            boundary="external_gateway",
+            canonical_representation="",
+            translation_required=False,
+        )
+        rule = DirectionalRule(
+            rule_id="RULE-1",
+            interaction_contracts=[contract],
+        )
+        spec = DirectionalSpec(rules=[rule])
+        candidate = _make_candidate(
+            boundaries=("unrelated_boundary",),
+            interaction_contracts=("IC-001",),
+        )
+        result = validator.validate(specification=spec, candidate=candidate)
+        assert not any(
+            f.check == "translation_boundary_represented" for f in result.findings
+        )
+
+    def test_both_boundary_and_canonical_representation_absent_fails(self) -> None:
+        validator = DeterministicProjectSpecValidator()
+        contract = InteractionContract(
+            contract_id="IC-001",
+            boundary="missing_boundary",
+            canonical_representation="missing_canonical",
+            translation_required=True,
+        )
+        rule = DirectionalRule(
+            rule_id="RULE-1",
+            interaction_contracts=[contract],
+        )
+        spec = DirectionalSpec(rules=[rule])
+        candidate = _make_candidate(
+            boundaries=("other_boundary",),
+            interaction_contracts=("IC-001",),
+        )
+        result = validator.validate(specification=spec, candidate=candidate)
+        assert result.status == ValidationStatus.FAIL.value
+        finding = next(
+            f for f in result.findings if f.check == "translation_boundary_represented"
+        )
+        assert finding.status == ValidationStatus.FAIL.value
+

@@ -393,7 +393,8 @@ class DeterministicProjectSpecValidator:
 
         if contract.translation_required:
             boundary_present = any(
-                contract.boundary in b or contract.canonical_representation in b
+                (bool(contract.boundary) and contract.boundary in b)
+                or (bool(contract.canonical_representation) and contract.canonical_representation in b)
                 for b in candidate.boundaries
             )
             findings.append(

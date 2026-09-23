@@ -280,8 +280,9 @@ class DirectionalSpec(CognitiveObject):
         rules: Sequence[DirectionalRule] = (),
         metadata: Mapping[str, Any] | None = None,
         provenance: ProvenanceRecord | None = None,
+        id: str | None = None,
     ) -> None:
-        object.__setattr__(self, "id", generate_entity_id())
+        object.__setattr__(self, "id", str(id) if id else generate_entity_id())
         object.__setattr__(self, "schema_version", SCHEMA_VERSION_V1)
         object.__setattr__(self, "created_at", current_utc_timestamp())
         object.__setattr__(self, "rules", tuple(rules))

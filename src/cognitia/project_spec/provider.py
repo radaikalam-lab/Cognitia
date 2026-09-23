@@ -185,18 +185,29 @@ class DeterministicProjectionProvider:
                     continue
                 seen_pairs.add(pair_key)
 
-                overlap = set(rule_a.prohibited_authorities) & set(
+                overlap_a = set(rule_a.prohibited_authorities) & set(
                     rule_b.allowed_authorities
                 )
-                if overlap:
+                overlap_b = set(rule_b.prohibited_authorities) & set(
+                    rule_a.allowed_authorities
+                )
+                if overlap_a or overlap_b:
+                    descriptions: list[str] = []
+                    if overlap_a:
+                        descriptions.append(
+                            f"Rule {rule_a.rule_id} prohibits authorities "
+                            f"that rule {rule_b.rule_id} allows: {sorted(overlap_a)}"
+                        )
+                    if overlap_b:
+                        descriptions.append(
+                            f"Rule {rule_b.rule_id} prohibits authorities "
+                            f"that rule {rule_a.rule_id} allows: {sorted(overlap_b)}"
+                        )
                     conflicts.append(
                         Conflict(
                             conflict_id=f"conflict-{rule_a.rule_id}-{rule_b.rule_id}",
                             rules_in_conflict=[rule_a.rule_id, rule_b.rule_id],
-                            description=(
-                                f"Rule {rule_a.rule_id} prohibits authorities "
-                                f"that rule {rule_b.rule_id} allows: {sorted(overlap)}"
-                            ),
+                            description="; ".join(descriptions),
                             severity="high",
                             governance_required=True,
                         )

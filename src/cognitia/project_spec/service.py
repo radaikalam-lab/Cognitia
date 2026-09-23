@@ -127,6 +127,7 @@ class InMemoryProjectSpecService:
             rules=spec.rules + (rule,),
             metadata=spec.metadata,
             provenance=spec.provenance,
+            id=spec.id,
         )
         self._specs[spec_id] = updated
         self._rules[rule.rule_id or rule.id] = rule
