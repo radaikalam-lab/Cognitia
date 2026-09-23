@@ -1,4 +1,4 @@
-﻿services:
+services:
   cognitia:
     build:
       context: ..
@@ -9,6 +9,9 @@
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # Designated persistence mount: only this directory is writable
+      - ./data:/var/lib/cognitia
     ports:
       # Bound strictly to 127.0.0.1 (Local-First security invariant)
       # Host port 8001 maps to Container port 8000
@@ -20,6 +23,7 @@
     environment:
       - COGNITIA_HOST=0.0.0.0
       - COGNITIA_PORT=8000
+      - COGNITIA_DATA_DIR=/var/lib/cognitia/epistemic
     healthcheck:
       test: ["CMD", "python", "/app/runtime/scripts/health_check.py", "http://127.0.0.1:8000/v1/health"]
       interval: 15s

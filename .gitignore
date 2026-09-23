@@ -65,3 +65,7 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+
+# Cognitia local runtime data
+runtime/data/
+*.tmp*

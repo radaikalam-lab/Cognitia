@@ -1,4 +1,4 @@
-﻿{
+{
   "runtime_identity": "Cognitia",
   "runtime_version": "1.0.0",
   "cognitive_abi_version": "1.0.0",
@@ -11,6 +11,15 @@
   },
   "epistemic": {
     "max_nodes": 50000
+  },
+  "persistence": {
+    "enabled": true,
+    "backend": "file",
+    "data_dir": "/var/lib/cognitia/epistemic",
+    "durability": "sync",
+    "snapshot_interval_records": 1000,
+    "journal_max_bytes": 268435456,
+    "ephemeral_mode": false
   },
   "security": {
     "require_local_binding": true,

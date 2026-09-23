@@ -1,5 +1,5 @@
-﻿# Cognitia Standalone Runtime Container
-# Local-first, unprivileged, non-root, read-only root compatible
+# Cognitia Standalone Runtime Container
+# Local-first, unprivileged, non-root, read-only root compatible with durable file persistence
 
 FROM python:3.12-slim
 
@@ -11,9 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Create unprivileged service user
+# Create unprivileged service user and persistence directory
 RUN addgroup --system --gid 10001 cognitia && \
-    adduser --system --uid 10001 --gid 10001 --no-create-home cognitia
+    adduser --system --uid 10001 --gid 10001 --no-create-home cognitia && \
+    mkdir -p /var/lib/cognitia && \
+    chown -R cognitia:cognitia /var/lib/cognitia
 
 # Copy source code and runtime configuration
 COPY src/ /app/src/
