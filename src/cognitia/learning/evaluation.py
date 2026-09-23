@@ -1,7 +1,8 @@
 """Model Evaluation and Competition Engine.
 
 Provides standard statistical metrics, calibration measurement, learning curve
-generation, and multi-model comparison without autonomous model promotion.
+generation, multi-model comparison, and candidate promotion proposals without
+autonomous model promotion or activation.
 """
 
 from __future__ import annotations
@@ -13,9 +14,12 @@ from cognitia.abi.types import current_utc_timestamp
 from cognitia.learning.contract import (
     AdaptiveInferenceRequest,
     AdaptiveLearningProvider,
+    CandidateStatus,
     EvaluationMetric,
     LearningCurvePoint,
+    ModelCandidate,
     ModelComparisonRecord,
+    ModelPromotionProposal,
     TaskType,
 )
 from cognitia.provenance.record import ProvenanceRecord, SourceType
@@ -96,7 +100,7 @@ class ModelEvaluationEngine:
 
         for item in dataset:
             rep = item.get("representation")
-            exp = item.get("expected")
+            exp = item.get("expected") if item.get("expected") is not None else item.get("expected_label")
             if not rep or exp is None:
                 continue
 
@@ -156,7 +160,7 @@ class ModelEvaluationEngine:
         task: TaskType = TaskType.CLASSIFICATION,
     ) -> ModelComparisonRecord:
         """Compare multiple candidate models side-by-side on the same evaluation dataset.
-        
+
         Advisory only; does NOT autonomously promote or activate models.
         """
         metrics_by_model: dict[str, dict[str, float]] = {}
@@ -193,4 +197,77 @@ class ModelEvaluationEngine:
                 producer_id="eval_engine:comparison",
                 is_deterministic=True,
             ),
+        )
+
+    @classmethod
+    def evaluate_candidate_vs_baseline(
+        cls,
+        provider: AdaptiveLearningProvider,
+        candidate: ModelCandidate,
+        baseline_model_id: str,
+        baseline_model_version: str,
+        dataset: list[dict[str, Any]],
+        dataset_id: str = "eval_dataset_v1",
+        drift_context: dict[str, Any] | None = None,
+        task: TaskType = TaskType.CLASSIFICATION,
+    ) -> ModelPromotionProposal:
+        """Evaluate a ModelCandidate against its parent/baseline model and generate an advisory promotion proposal.
+
+        Authority is strictly NONE. Activation remains an external governance decision.
+        """
+        baseline_metrics = cls.evaluate_model_on_dataset(
+            provider=provider,
+            model_id=baseline_model_id,
+            model_version=baseline_model_version,
+            dataset=dataset,
+            task=task,
+        )
+
+        candidate_metrics = cls.evaluate_model_on_dataset(
+            provider=provider,
+            model_id=candidate.candidate_model_id,
+            model_version=candidate.candidate_model_version,
+            dataset=dataset,
+            task=task,
+        )
+
+        metric_deltas: dict[str, float] = {}
+        for k in set(baseline_metrics.keys()) | set(candidate_metrics.keys()):
+            b_val = baseline_metrics.get(k, 0.0)
+            c_val = candidate_metrics.get(k, 0.0)
+            metric_deltas[f"{k}_delta"] = round(c_val - b_val, 4)
+
+        acc_delta = metric_deltas.get(f"{EvaluationMetric.ACCURACY.value}_delta", 0.0)
+        f1_delta = metric_deltas.get(f"{EvaluationMetric.F1.value}_delta", 0.0)
+        brier_delta = metric_deltas.get(f"{EvaluationMetric.BRIER_SCORE.value}_delta", 0.0)
+
+        rationale = (
+            f"Candidate {candidate.candidate_model_id}:{candidate.candidate_model_version} evaluated vs "
+            f"baseline {baseline_model_id}:{baseline_model_version}. "
+            f"Accuracy delta: {acc_delta:+.4f}, F1 delta: {f1_delta:+.4f}, Brier delta: {brier_delta:+.4f}."
+        )
+
+        prov = ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            producer_id=f"eval_engine:proposal:{candidate.candidate_model_id}:{candidate.candidate_model_version}",
+            capability_id="learn.adaptive.proposal",
+            is_deterministic=True,
+        )
+
+        return ModelPromotionProposal(
+            parent_model_id=baseline_model_id,
+            parent_model_version=baseline_model_version,
+            candidate_model_id=candidate.candidate_model_id,
+            candidate_model_version=candidate.candidate_model_version,
+            provider_id=candidate.provider_id,
+            dataset_id=dataset_id,
+            baseline_metrics=baseline_metrics,
+            candidate_metrics=candidate_metrics,
+            metric_deltas=metric_deltas,
+            drift_context=drift_context or {},
+            rationale=rationale,
+            recommendation="PROPOSE_CANDIDATE" if acc_delta >= 0.0 else "DEFER_CANDIDATE",
+            status=CandidateStatus.PROPOSED,
+            authority="NONE",
+            provenance=prov,
         )

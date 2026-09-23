@@ -29,9 +29,18 @@ from cognitia.provenance.record import (
 )
 from cognitia.learning.contract import (
     AdaptiveLearningResult,
+    CandidateStatus,
     DriftReport,
+    FeedbackRecord,
     LearningCurvePoint,
+    LearningEvent,
+    LearningUpdate,
+    ModelCandidate,
     ModelComparisonRecord,
+    ModelEvaluation,
+    ModelPromotionProposal,
+    OutcomeRecord,
+    PromotionDecisionRecord,
     TaskType,
 )
 from cognitia.learning.laya_provider import LayaProvider
@@ -255,6 +264,145 @@ class EpistemicBridge:
                 authority="NONE",
             )
             self.adaptive_learning._drift_reports.append(report)
+
+        elif rec_type == "outcome_record":
+            outcome = OutcomeRecord(
+                id=payload.get("id", ""),
+                source_id=payload.get("source_id", ""),
+                target_prediction_id=payload.get("target_prediction_id", ""),
+                observation_id=payload.get("observation_id", ""),
+                actual_values=payload.get("actual_values", {}),
+                is_ground_truth=payload.get("is_ground_truth", True),
+                authority="NONE",
+                metadata=payload.get("metadata", {}),
+            )
+            self.adaptive_learning._outcomes[outcome.id] = outcome
+
+        elif rec_type == "feedback_record":
+            fb = FeedbackRecord(
+                id=payload.get("id", ""),
+                prediction_id=payload.get("prediction_id", ""),
+                outcome_id=payload.get("outcome_id", ""),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", "1.0.0"),
+                provider_id=payload.get("provider_id", "laya"),
+                loss_or_error=float(payload.get("loss_or_error", 0.0)),
+                metrics=payload.get("metrics", {}),
+                feedback_type=payload.get("feedback_type", "direct_outcome"),
+                payload=payload.get("payload", {}),
+                authority="NONE",
+            )
+            self.adaptive_learning._feedback[fb.id] = fb
+
+        elif rec_type == "learning_event":
+            le = LearningEvent(
+                id=payload.get("id", ""),
+                event_type=payload.get("event_type", "outcome_feedback"),
+                feedback_ids=payload.get("feedback_ids", []),
+                prediction_ids=payload.get("prediction_ids", []),
+                outcome_ids=payload.get("outcome_ids", []),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", "1.0.0"),
+                provider_id=payload.get("provider_id", "laya"),
+                sample_count=int(payload.get("sample_count", 0)),
+                data_fingerprint=payload.get("data_fingerprint", ""),
+                authority="NONE",
+            )
+            self.adaptive_learning._learning_events[le.id] = le
+
+        elif rec_type == "learning_update":
+            lu = LearningUpdate(
+                id=payload.get("id", ""),
+                learning_event_id=payload.get("learning_event_id", ""),
+                parent_model_id=payload.get("parent_model_id", ""),
+                parent_model_version=payload.get("parent_model_version", "1.0.0"),
+                candidate_model_id=payload.get("candidate_model_id", ""),
+                candidate_model_version=payload.get("candidate_model_version", "1.1-candidate"),
+                provider_id=payload.get("provider_id", "laya"),
+                update_method=payload.get("update_method", "delta_update"),
+                parameter_deltas=payload.get("parameter_deltas", {}),
+                parameter_fingerprint=payload.get("parameter_fingerprint", ""),
+                random_seed=int(payload.get("random_seed", 42)),
+                authority="NONE",
+            )
+            self.adaptive_learning._learning_updates[lu.id] = lu
+
+        elif rec_type == "model_candidate":
+            mc = ModelCandidate(
+                id=payload.get("id", ""),
+                candidate_model_id=payload.get("candidate_model_id", ""),
+                candidate_model_version=payload.get("candidate_model_version", "1.1-candidate"),
+                parent_model_id=payload.get("parent_model_id", ""),
+                parent_model_version=payload.get("parent_model_version", "1.0.0"),
+                provider_id=payload.get("provider_id", "laya"),
+                provider_version=payload.get("provider_version", "1.0.0"),
+                status=CandidateStatus(payload.get("status", "candidate")),
+                parameter_fingerprint=payload.get("parameter_fingerprint", ""),
+                parameters=payload.get("parameters", {}),
+                creation_seed=int(payload.get("creation_seed", 42)),
+                learning_event_ids=payload.get("learning_event_ids", []),
+                is_deterministic=payload.get("is_deterministic", True),
+                authority="NONE",
+            )
+            self.adaptive_learning._candidates[mc.id] = mc
+            self.adaptive_learning._candidates[mc.candidate_model_version] = mc
+            cand_record = ModelRecord(
+                model_id=mc.candidate_model_id,
+                model_version=mc.candidate_model_version,
+                provider=mc.provider_id,
+                status=ModelStatus.CANDIDATE,
+                is_deterministic=mc.is_deterministic,
+                calibration_checksum=mc.parameter_fingerprint,
+            )
+            self.adaptive_learning.model_registry.register(cand_record)
+
+        elif rec_type == "model_evaluation":
+            me = ModelEvaluation(
+                id=payload.get("id", ""),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", "1.0.0"),
+                provider_id=payload.get("provider_id", "laya"),
+                dataset_id=payload.get("dataset_id", ""),
+                sample_count=int(payload.get("sample_count", 0)),
+                metrics=payload.get("metrics", {}),
+                is_deterministic=payload.get("is_deterministic", True),
+                authority="NONE",
+            )
+            self.adaptive_learning._evaluations[me.id] = me
+
+        elif rec_type == "model_promotion_proposal":
+            prop = ModelPromotionProposal(
+                id=payload.get("id", ""),
+                parent_model_id=payload.get("parent_model_id", ""),
+                parent_model_version=payload.get("parent_model_version", "1.0.0"),
+                candidate_model_id=payload.get("candidate_model_id", ""),
+                candidate_model_version=payload.get("candidate_model_version", "1.1-candidate"),
+                provider_id=payload.get("provider_id", "laya"),
+                dataset_id=payload.get("dataset_id", ""),
+                baseline_metrics=payload.get("baseline_metrics", {}),
+                candidate_metrics=payload.get("candidate_metrics", {}),
+                metric_deltas=payload.get("metric_deltas", {}),
+                drift_context=payload.get("drift_context", {}),
+                rationale=payload.get("rationale", ""),
+                recommendation=payload.get("recommendation", "PROPOSE_CANDIDATE"),
+                status=CandidateStatus(payload.get("status", "proposed")),
+                authority="NONE",
+            )
+            self.adaptive_learning._proposals[prop.id] = prop
+
+        elif rec_type == "promotion_decision":
+            dec = PromotionDecisionRecord(
+                id=payload.get("id", ""),
+                proposal_id=payload.get("proposal_id", ""),
+                candidate_model_id=payload.get("candidate_model_id", ""),
+                candidate_model_version=payload.get("candidate_model_version", ""),
+                decision=payload.get("decision", "REJECTED"),
+                decider_id=payload.get("decider_id", ""),
+                decider_authority=payload.get("decider_authority", ""),
+                rationale=payload.get("rationale", ""),
+                cognitia_authority="NONE",
+            )
+            self.adaptive_learning._decisions[dec.id] = dec
 
 
     def _import_snapshot_state(self, snapshot: SnapshotData) -> None:

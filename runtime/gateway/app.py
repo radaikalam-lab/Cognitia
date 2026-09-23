@@ -236,6 +236,146 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+
+        elif path == "/v1/learning/outcomes":
+            outcomes = self.epistemic_bridge.adaptive_learning.list_outcomes()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(outcomes),
+                    "outcomes": [
+                        {
+                            "id": o.id,
+                            "source_id": o.source_id,
+                            "target_prediction_id": o.target_prediction_id,
+                            "observation_id": o.observation_id,
+                            "actual_values": o.actual_values,
+                            "is_ground_truth": o.is_ground_truth,
+                            "authority": o.authority,
+                            "metadata": o.metadata,
+                        }
+                        for o in outcomes
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/feedback":
+            feedbacks = self.epistemic_bridge.adaptive_learning.list_feedback()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(feedbacks),
+                    "feedback": [
+                        {
+                            "id": f.id,
+                            "prediction_id": f.prediction_id,
+                            "outcome_id": f.outcome_id,
+                            "model_id": f.model_id,
+                            "model_version": f.model_version,
+                            "provider_id": f.provider_id,
+                            "loss_or_error": f.loss_or_error,
+                            "metrics": f.metrics,
+                            "feedback_type": f.feedback_type,
+                            "payload": f.payload,
+                            "authority": f.authority,
+                        }
+                        for f in feedbacks
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/candidates":
+            candidates = self.epistemic_bridge.adaptive_learning.list_candidates()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(candidates),
+                    "candidates": [
+                        {
+                            "id": c.id,
+                            "candidate_model_id": c.candidate_model_id,
+                            "candidate_model_version": c.candidate_model_version,
+                            "parent_model_id": c.parent_model_id,
+                            "parent_model_version": c.parent_model_version,
+                            "provider_id": c.provider_id,
+                            "status": c.status.value if hasattr(c.status, "value") else str(c.status),
+                            "parameter_fingerprint": c.parameter_fingerprint,
+                            "creation_seed": c.creation_seed,
+                            "learning_event_ids": c.learning_event_ids,
+                            "is_deterministic": c.is_deterministic,
+                            "authority": c.authority,
+                        }
+                        for c in candidates
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/proposals":
+            proposals = self.epistemic_bridge.adaptive_learning.list_proposals()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(proposals),
+                    "proposals": [
+                        {
+                            "id": p.id,
+                            "parent_model_id": p.parent_model_id,
+                            "parent_model_version": p.parent_model_version,
+                            "candidate_model_id": p.candidate_model_id,
+                            "candidate_model_version": p.candidate_model_version,
+                            "provider_id": p.provider_id,
+                            "dataset_id": p.dataset_id,
+                            "baseline_metrics": p.baseline_metrics,
+                            "candidate_metrics": p.candidate_metrics,
+                            "metric_deltas": p.metric_deltas,
+                            "drift_context": p.drift_context,
+                            "rationale": p.rationale,
+                            "recommendation": p.recommendation,
+                            "status": p.status.value if hasattr(p.status, "value") else str(p.status),
+                            "authority": p.authority,
+                        }
+                        for p in proposals
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/decisions":
+            decisions = self.epistemic_bridge.adaptive_learning.list_decisions()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(decisions),
+                    "decisions": [
+                        {
+                            "id": d.id,
+                            "proposal_id": d.proposal_id,
+                            "candidate_model_id": d.candidate_model_id,
+                            "candidate_model_version": d.candidate_model_version,
+                            "decision": d.decision,
+                            "decider_id": d.decider_id,
+                            "decider_authority": d.decider_authority,
+                            "rationale": d.rationale,
+                            "cognitia_authority": d.cognitia_authority,
+                        }
+                        for d in decisions
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
         elif path == "/v1/providers":
             providers = self.provider_registry.list_providers()
             self._send_json(HTTPStatus.OK, {"providers": providers})
@@ -421,6 +561,221 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 )
             except Exception as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_COMPARE_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/outcomes":
+            try:
+                from cognitia.learning.contract import OutcomeRecord
+                source_id = body.get("source_id", "external_host")
+                target_pred = body.get("target_prediction_id", "")
+                obs_id = body.get("observation_id", "")
+                actual_vals = body.get("actual_values", {})
+                meta = body.get("metadata", {})
+
+                outcome = OutcomeRecord(
+                    source_id=source_id,
+                    target_prediction_id=target_pred,
+                    observation_id=obs_id,
+                    actual_values=actual_vals,
+                    is_ground_truth=True,
+                    authority="NONE",
+                    metadata=meta,
+                )
+                rec = self.epistemic_bridge.adaptive_learning.record_outcome(outcome)
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "recorded",
+                        "id": rec.id,
+                        "source_id": rec.source_id,
+                        "target_prediction_id": rec.target_prediction_id,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "OUTCOME_RECORD_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/feedback":
+            try:
+                prediction_id = body.get("prediction_id", "")
+                outcome_id = body.get("outcome_id", "")
+                outcome = self.epistemic_bridge.adaptive_learning._outcomes.get(outcome_id)
+                if not outcome and "actual_values" in body:
+                    from cognitia.learning.contract import OutcomeRecord
+                    outcome = OutcomeRecord(
+                        source_id=body.get("source_id", "external_host"),
+                        target_prediction_id=prediction_id,
+                        actual_values=body.get("actual_values", {}),
+                        authority="NONE",
+                    )
+                    self.epistemic_bridge.adaptive_learning.record_outcome(outcome)
+
+                if not outcome:
+                    from cognitia.learning.contract import OutcomeRecord
+                    outcome = OutcomeRecord(
+                        source_id=body.get("source_id", "external_host"),
+                        target_prediction_id=prediction_id,
+                        actual_values=body.get("payload", {}),
+                        authority="NONE",
+                    )
+                    self.epistemic_bridge.adaptive_learning.record_outcome(outcome)
+
+                fb = self.epistemic_bridge.adaptive_learning.create_feedback_from_outcome(
+                    prediction_id=prediction_id,
+                    outcome=outcome,
+                    feedback_type=body.get("feedback_type", "direct_outcome"),
+                    custom_metrics=body.get("metrics"),
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "recorded",
+                        "id": fb.id,
+                        "prediction_id": fb.prediction_id,
+                        "outcome_id": fb.outcome_id,
+                        "loss_or_error": fb.loss_or_error,
+                        "metrics": fb.metrics,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "FEEDBACK_RECORD_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/update" or path == "/v1/learning/learn":
+            try:
+                feedback_ids = body.get("feedback_ids", [])
+                base_model_id = body.get("base_model_id", "laya_acoustic_v1")
+                seed = int(body.get("seed", 42))
+                config = body.get("config", {})
+
+                candidate, update, event = self.epistemic_bridge.adaptive_learning.learn_from_feedback(
+                    feedback_ids=feedback_ids,
+                    base_model_id=base_model_id,
+                    seed=seed,
+                    config=config,
+                )
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "candidate_generated",
+                        "candidate_model_id": candidate.candidate_model_id,
+                        "candidate_model_version": candidate.candidate_model_version,
+                        "parent_model_id": candidate.parent_model_id,
+                        "parent_model_version": candidate.parent_model_version,
+                        "parameter_fingerprint": candidate.parameter_fingerprint,
+                        "learning_event_id": event.id,
+                        "learning_update_id": update.id,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_UPDATE_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/promotion-proposal":
+            try:
+                candidate_version = body.get("candidate_version", "")
+                base_version = body.get("baseline_model_version", "1.0.0")
+                model_id = body.get("model_id", "laya_acoustic_v1")
+                raw_dataset = body.get("dataset", [])
+                dataset_id = body.get("dataset_id", "eval_dataset_v1")
+
+                from cognitia.learning.representation import RepresentationAdapter
+                adapted_dataset = []
+                for sample in raw_dataset:
+                    rep = RepresentationAdapter.adapt_raw(sample.get("payload", {}), source_id=sample.get("id", "sample"))
+                    adapted_dataset.append({
+                        "representation": rep,
+                        "expected": sample.get("expected"),
+                    })
+
+                proposal = self.epistemic_bridge.adaptive_learning.create_promotion_proposal(
+                    candidate_version=candidate_version,
+                    baseline_model_version=base_version,
+                    model_id=model_id,
+                    dataset=adapted_dataset,
+                    dataset_id=dataset_id,
+                    drift_context=body.get("drift_context"),
+                )
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "proposal_generated",
+                        "id": proposal.id,
+                        "candidate_model_id": proposal.candidate_model_id,
+                        "candidate_model_version": proposal.candidate_model_version,
+                        "parent_model_id": proposal.parent_model_id,
+                        "parent_model_version": proposal.parent_model_version,
+                        "baseline_metrics": proposal.baseline_metrics,
+                        "candidate_metrics": proposal.candidate_metrics,
+                        "metric_deltas": proposal.metric_deltas,
+                        "rationale": proposal.rationale,
+                        "recommendation": proposal.recommendation,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "PROMOTION_PROPOSAL_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/decision":
+            try:
+                proposal_id = body.get("proposal_id", "")
+                decision = body.get("decision", "REJECTED")
+                decider_id = body.get("decider_id", "external_reviewer")
+                decider_auth = body.get("decider_authority", "domain_governance")
+                rationale = body.get("rationale", "")
+
+                dec_rec = self.epistemic_bridge.adaptive_learning.record_promotion_decision(
+                    proposal_id=proposal_id,
+                    decision=decision,
+                    decider_id=decider_id,
+                    decider_authority=decider_auth,
+                    rationale=rationale,
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "decision_recorded",
+                        "id": dec_rec.id,
+                        "proposal_id": dec_rec.proposal_id,
+                        "decision": dec_rec.decision,
+                        "decider_id": dec_rec.decider_id,
+                        "cognitia_authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "DECISION_RECORD_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/replay":
+            try:
+                candidate_version = body.get("candidate_version", "")
+                model_id = body.get("model_id", "laya_acoustic_v1")
+                seed = int(body.get("seed", 42))
+
+                res = self.epistemic_bridge.adaptive_learning.replay_learning(
+                    candidate_version=candidate_version,
+                    model_id=model_id,
+                    seed=seed,
+                )
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": res.status,
+                        "is_replayable": res.is_replayable,
+                        "is_exact_match": res.is_exact_match,
+                        "original_fingerprint": res.original_fingerprint,
+                        "replayed_fingerprint": res.replayed_fingerprint,
+                        "parameter_parity": res.parameter_parity,
+                        "reason": res.reason,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_REPLAY_ERROR", str(exc))
             return
         elif path == "/v1/providers/register":
             self._send_error(
