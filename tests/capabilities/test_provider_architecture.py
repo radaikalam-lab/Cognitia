@@ -1,5 +1,6 @@
 """Architectural tests verifying Provider Layer neutrality and Laya decoupling."""
 
+import subprocess
 import sys
 import pytest
 
@@ -17,21 +18,16 @@ from cognitia.provenance.record import ProvenanceRecord, SourceType
 
 def test_core_does_not_import_laya():
     """Verify that Cognitia core contains zero imports or runtime references to Laya."""
-    import cognitia
-    import cognitia.abi
-    import cognitia.capabilities
-    import cognitia.epistemic
-    import cognitia.experience
-    import cognitia.models
-    import cognitia.provenance
-    import cognitia.reasoning
-    import cognitia.runtime
-    import cognitia.service
-
-    loaded = [m.lower() for m in sys.modules.keys()]
-    assert not any(
-        "laya" in mod and "test_provider_architecture" not in mod for mod in loaded
-    ), "Laya module found in sys.modules from core imports"
+    code = (
+        "import sys\n"
+        "import cognitia, cognitia.abi, cognitia.capabilities, cognitia.epistemic, "
+        "cognitia.experience, cognitia.models, cognitia.provenance, cognitia.reasoning, "
+        "cognitia.runtime, cognitia.service\n"
+        "loaded = [m.lower() for m in sys.modules.keys()]\n"
+        "assert not any('laya' in mod for mod in loaded), 'Laya found in core imports'"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, f"Subprocess import test failed: {result.stderr}"
 
 
 def test_provider_identity_is_generic():
@@ -114,7 +110,6 @@ def test_decision_remains_advisory():
 
     assert isinstance(decision, Decision)
     assert decision.proposal_type == "generative_hypothesis_proposal"
-    # Decision must NOT have actuator bindings
     assert not hasattr(decision, "actuate")
     assert not hasattr(decision, "execute")
 

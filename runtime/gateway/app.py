@@ -111,6 +111,14 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
         elif path == "/v1/capabilities":
             capabilities = [
                 {
+                    "capability": "learn.adaptive",
+                    "description": "Advisory adaptive machine learning and typed decision inference",
+                    "direction": "INBOUND_ADVISORY",
+                    "provider": "laya",
+                    "is_deterministic": True,
+                    "authority": "NONE",
+                },
+                {
                     "capability": "observe.navigation",
                     "description": "Passive browser navigation lifecycle telemetry observation",
                     "direction": "INBOUND",
@@ -143,6 +151,91 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
             ]
             self._send_json(HTTPStatus.OK, {"capabilities": capabilities})
 
+        elif path == "/v1/learning/models":
+            models = self.epistemic_bridge.adaptive_learning.model_registry.list_versions("laya_acoustic_v1")
+            active_rec = self.epistemic_bridge.adaptive_learning.model_registry.get_active("laya_acoustic_v1")
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "provider": "laya",
+                    "active_model": active_rec.model_id if active_rec else "laya_acoustic_v1",
+                    "available_models": [
+                        {
+                            "model_id": m.model_id,
+                            "model_version": m.model_version,
+                            "provider": m.provider,
+                            "is_deterministic": m.is_deterministic,
+                            "status": m.status.value if hasattr(m.status, "value") else str(m.status),
+                        }
+                        for m in models
+                    ] or [
+                        {
+                            "model_id": "laya_acoustic_v1",
+                            "model_version": "1.0.0",
+                            "provider": "laya",
+                            "is_deterministic": True,
+                            "status": "active",
+                        }
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/history":
+            history = self.epistemic_bridge.adaptive_learning.list_history()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(history),
+                    "results": [
+                        {
+                            "id": r.id,
+                            "model_id": r.model_id,
+                            "model_version": r.model_version,
+                            "provider_id": r.provider_id,
+                            "task": r.task.value if hasattr(r.task, "value") else str(r.task),
+                            "output": r.output,
+                            "confidence": r.confidence,
+                            "is_deterministic": r.is_deterministic,
+                            "authority": r.authority,
+                            "epistemic_status": r.epistemic_status,
+                        }
+                        for r in history
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/drift":
+            reports = self.epistemic_bridge.adaptive_learning.list_drift_reports()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(reports),
+                    "reports": [
+                        {
+                            "id": rep.id,
+                            "model_id": rep.model_id,
+                            "drift_type": rep.drift_type.value if hasattr(rep.drift_type, "value") else str(rep.drift_type),
+                            "metric_name": rep.metric_name,
+                            "baseline_value": rep.baseline_value,
+                            "current_value": rep.current_value,
+                            "drift_magnitude": rep.drift_magnitude,
+                            "drift_detected": rep.drift_detected,
+                            "recommendation": rep.recommendation,
+                            "authority": rep.authority,
+                        }
+                        for rep in reports
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
         elif path == "/v1/providers":
             providers = self.provider_registry.list_providers()
             self._send_json(HTTPStatus.OK, {"providers": providers})
@@ -205,6 +298,130 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
             self.handle_post_evidence(body, correlation_id)
         elif path == "/v1/directional-specifications":
             self.handle_post_directional_spec(body, correlation_id)
+        elif path == "/v1/learning/predict":
+            try:
+                validated = ABIValidator.validate_learning_predict_dict(body)
+                from cognitia.learning.representation import RepresentationAdapter
+                from cognitia.learning.contract import TaskType
+
+                model_id = validated.get("model_id", "laya_acoustic_v1")
+                task_str = validated.get("task", "classification")
+                task_type = TaskType(task_str)
+                payload = validated.get("payload", {})
+                params = validated.get("parameters", {})
+                is_det = validated.get("is_deterministic", True)
+
+                rep = RepresentationAdapter.adapt_raw(payload, source_id=f"api_predict_{uuid.uuid4().hex[:8]}")
+                result = self.epistemic_bridge.adaptive_learning.infer(
+                    model_id=model_id,
+                    provider_id="laya",
+                    task=task_type,
+                    representation=rep,
+                    parameters=params,
+                    is_deterministic=is_det,
+                )
+
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "inferred",
+                        "id": result.id,
+                        "model_id": result.model_id,
+                        "model_version": result.model_version,
+                        "provider_id": result.provider_id,
+                        "task": result.task.value if hasattr(result.task, "value") else str(result.task),
+                        "output": result.output,
+                        "confidence": result.confidence,
+                        "is_deterministic": result.is_deterministic,
+                        "epistemic_status": result.epistemic_status,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_PREDICT_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/evaluate":
+            try:
+                validated = ABIValidator.validate_learning_evaluate_dict(body)
+                from cognitia.learning.representation import RepresentationAdapter
+                from cognitia.learning.contract import TaskType
+
+                model_id = validated.get("model_id", "laya_acoustic_v1")
+                task_str = validated.get("task", "classification")
+                task_type = TaskType(task_str)
+                raw_dataset = validated.get("dataset", [])
+
+                adapted_dataset = []
+                for sample in raw_dataset:
+                    rep = RepresentationAdapter.adapt_raw(sample.get("payload", {}), source_id=sample.get("id", "sample"))
+                    adapted_dataset.append({
+                        "representation": rep,
+                        "expected": sample.get("expected"),
+                    })
+
+                provider = self.epistemic_bridge.adaptive_learning.get_provider("laya")
+                from cognitia.learning.evaluation import ModelEvaluationEngine
+                metrics = ModelEvaluationEngine.evaluate_model_on_dataset(
+                    provider=provider,
+                    model_id=model_id,
+                    model_version="1.0.0",
+                    dataset=adapted_dataset,
+                    task=task_type,
+                )
+
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "evaluated",
+                        "model_id": model_id,
+                        "metrics": metrics,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_EVALUATION_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/compare":
+            try:
+                validated = ABIValidator.validate_learning_compare_dict(body)
+                from cognitia.learning.representation import RepresentationAdapter
+                from cognitia.learning.contract import TaskType
+
+                models = validated.get("models", [])
+                raw_dataset = validated.get("dataset", [])
+                dataset_id = validated.get("dataset_id", "eval_dataset_v1")
+
+                adapted_dataset = []
+                for sample in raw_dataset:
+                    rep = RepresentationAdapter.adapt_raw(sample.get("payload", {}), source_id=sample.get("id", "sample"))
+                    adapted_dataset.append({
+                        "representation": rep,
+                        "expected": sample.get("expected"),
+                    })
+
+                comparison = self.epistemic_bridge.adaptive_learning.compare_candidate_models(
+                    candidate_models=[tuple(m) for m in models],
+                    dataset=adapted_dataset,
+                    dataset_id=dataset_id,
+                )
+
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "compared",
+                        "id": comparison.id,
+                        "dataset_id": comparison.dataset_id,
+                        "candidate_models": comparison.candidate_models,
+                        "metrics_by_model": comparison.metrics_by_model,
+                        "advisory_summary": comparison.advisory_summary,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_COMPARE_ERROR", str(exc))
+            return
         elif path == "/v1/providers/register":
             self._send_error(
                 HTTPStatus.FORBIDDEN,
@@ -540,6 +757,15 @@ def create_gateway_server(
             )
 
     bridge = EpistemicBridge(persistence_service=persistence_service)
+
+    # Safely close previous handler bridge persistence if present
+    if hasattr(CognitiaGatewayHandler, "epistemic_bridge") and CognitiaGatewayHandler.epistemic_bridge:
+        old_pers = getattr(CognitiaGatewayHandler.epistemic_bridge, "persistence_service", None)
+        if old_pers and hasattr(old_pers, "close"):
+            try:
+                old_pers.close()
+            except Exception:
+                pass
 
     # Bind handlers
     CognitiaGatewayHandler.provider_registry = registry

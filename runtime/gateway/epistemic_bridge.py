@@ -27,6 +27,18 @@ from cognitia.provenance.record import (
     ProvenanceRecord,
     SourceType,
 )
+from cognitia.learning.contract import (
+    AdaptiveLearningResult,
+    DriftReport,
+    LearningCurvePoint,
+    ModelComparisonRecord,
+    TaskType,
+)
+from cognitia.learning.laya_provider import LayaProvider
+from cognitia.learning.representation import RepresentationAdapter
+from cognitia.learning.service import AdaptiveLearningService
+from cognitia.models.registry import ModelRecord, ModelStatus
+
 
 from ..persistence.persistence_contract import (
     PersistenceError,
@@ -62,6 +74,9 @@ class EpistemicBridge:
         self._ingested_observations_count = 0
         self._ingested_evidence_count = 0
         self._ingested_proposals_count = 0
+        self.adaptive_learning = AdaptiveLearningService(
+            persistence_service=self.persistence_service
+        )
 
         # Perform recovery if persistence provider is supplied
         if self.persistence_service is not None:
@@ -171,6 +186,76 @@ class EpistemicBridge:
                     object.__setattr__(proposal, "id", prop_dict["id"])
                 self._proposals_store[proposal.id] = proposal
                 self._ingested_proposals_count += 1
+        elif rec_type == "model_registered":
+            m_rec = ModelRecord(
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", "1.0.0"),
+                provider=payload.get("provider", "laya"),
+                status=ModelStatus(payload.get("status", "active")),
+                is_deterministic=payload.get("is_deterministic", True),
+                calibration_checksum=payload.get("calibration_checksum", ""),
+            )
+            try:
+                self.adaptive_learning.register_model(m_rec)
+            except Exception:
+                pass
+
+        elif rec_type == "adaptive_learning_result":
+            res = AdaptiveLearningResult(
+                id=payload.get("id", ""),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", "1.0.0"),
+                provider_id=payload.get("provider_id", "laya"),
+                task=TaskType(payload.get("task", "classification")),
+                output=payload.get("output", {}),
+                confidence=float(payload.get("confidence", 0.0)),
+                is_deterministic=payload.get("is_deterministic", True),
+                input_reference=payload.get("input_reference", ""),
+                representation_version=payload.get("representation_version", "1.0.0"),
+                epistemic_status=payload.get("epistemic_status", "UNRESOLVED"),
+                authority="NONE",
+            )
+            self.adaptive_learning._learning_history.append(res)
+
+        elif rec_type == "learning_curve_point":
+            pt = LearningCurvePoint(
+                id=payload.get("id", ""),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", "1.0.0"),
+                provider_id=payload.get("provider_id", "laya"),
+                step_or_epoch=int(payload.get("step_or_epoch", 0)),
+                sample_count=int(payload.get("sample_count", 0)),
+                metrics=payload.get("metrics", {}),
+            )
+            self.adaptive_learning._learning_curves.append(pt)
+
+        elif rec_type == "model_comparison":
+            comp = ModelComparisonRecord(
+                id=payload.get("id", ""),
+                task=TaskType(payload.get("task", "classification")),
+                dataset_id=payload.get("dataset_id", ""),
+                candidate_models=payload.get("candidate_models", []),
+                metrics_by_model=payload.get("metrics_by_model", {}),
+                advisory_summary=payload.get("advisory_summary", ""),
+                authority="NONE",
+            )
+            self.adaptive_learning._comparisons.append(comp)
+
+        elif rec_type == "drift_report":
+            report = DriftReport(
+                id=payload.get("id", ""),
+                model_id=payload.get("model_id", ""),
+                drift_type=payload.get("drift_type", "prediction_drift"),
+                metric_name=payload.get("metric_name", ""),
+                baseline_value=float(payload.get("baseline_value", 0.0)),
+                current_value=float(payload.get("current_value", 0.0)),
+                drift_magnitude=float(payload.get("drift_magnitude", 0.0)),
+                drift_detected=bool(payload.get("drift_detected", False)),
+                recommendation=payload.get("recommendation", ""),
+                authority="NONE",
+            )
+            self.adaptive_learning._drift_reports.append(report)
+
 
     def _import_snapshot_state(self, snapshot: SnapshotData) -> None:
         """Import working state from snapshot data."""
@@ -303,11 +388,42 @@ class EpistemicBridge:
                     "metadata": prop.metadata,
                 })
 
+
+            models_list = [
+                {
+                    "model_id": m.model_id,
+                    "model_version": m.model_version,
+                    "provider": m.provider,
+                    "status": m.status.value if hasattr(m.status, "value") else str(m.status),
+                    "is_deterministic": m.is_deterministic,
+                    "calibration_checksum": m.calibration_checksum,
+                }
+                for m in self.adaptive_learning.model_registry.list_versions("laya_acoustic_v1")
+            ]
+            learning_hist_list = [
+                {
+                    "id": r.id,
+                    "model_id": r.model_id,
+                    "model_version": r.model_version,
+                    "provider_id": r.provider_id,
+                    "task": r.task.value if hasattr(r.task, "value") else str(r.task),
+                    "output": r.output,
+                    "confidence": r.confidence,
+                    "is_deterministic": r.is_deterministic,
+                    "input_reference": r.input_reference,
+                    "representation_version": r.representation_version,
+                    "epistemic_status": r.epistemic_status,
+                    "authority": r.authority,
+                }
+                for r in self.adaptive_learning.list_history()
+            ]
             return {
                 "observations": obs_list,
                 "evidence": ev_list,
                 "provenance": prov_list,
                 "proposals": prop_list,
+                "models": models_list,
+                "learning_history": learning_hist_list,
                 "total_nodes": len(self.epistemic_service._nodes),
             }
 

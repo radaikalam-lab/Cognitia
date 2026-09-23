@@ -199,3 +199,58 @@ class ABIValidator:
                 raise RuntimeValidationError(
                     f"String exceeds maximum length ({MAX_STRING_LENGTH} bytes)"
                 )
+
+    @classmethod
+    def validate_learning_predict_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate an adaptive learning prediction request against schema and transport limits."""
+        if not isinstance(data, dict):
+            raise ABIValidationError("Message root must be a JSON object")
+
+        model_id = data.get("model_id")
+        if not model_id or not isinstance(model_id, str):
+            raise ABIValidationError("Field 'model_id' must be a non-empty string")
+
+        task = data.get("task", "classification")
+        if not isinstance(task, str):
+            raise ABIValidationError("Field 'task' must be a string")
+
+        payload = data.get("payload")
+        if payload is None:
+            raise ABIValidationError("Field 'payload' is required for prediction")
+
+        cls._validate_resource_limits(data, 0)
+        return data
+
+    @classmethod
+    def validate_learning_evaluate_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate an adaptive learning evaluation request."""
+        if not isinstance(data, dict):
+            raise ABIValidationError("Message root must be a JSON object")
+
+        model_id = data.get("model_id")
+        if not model_id or not isinstance(model_id, str):
+            raise ABIValidationError("Field 'model_id' must be a non-empty string")
+
+        dataset = data.get("dataset")
+        if not isinstance(dataset, list):
+            raise ABIValidationError("Field 'dataset' must be a list of evaluation samples")
+
+        cls._validate_resource_limits(data, 0)
+        return data
+
+    @classmethod
+    def validate_learning_compare_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate an adaptive learning model comparison request."""
+        if not isinstance(data, dict):
+            raise ABIValidationError("Message root must be a JSON object")
+
+        models = data.get("models")
+        if not isinstance(models, list) or len(models) < 2:
+            raise ABIValidationError("Field 'models' must be a list of at least 2 candidate model tuples [model_id, version]")
+
+        dataset = data.get("dataset")
+        if not isinstance(dataset, list):
+            raise ABIValidationError("Field 'dataset' must be a list of evaluation samples")
+
+        cls._validate_resource_limits(data, 0)
+        return data
