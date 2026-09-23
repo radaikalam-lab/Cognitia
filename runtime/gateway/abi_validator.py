@@ -1,4 +1,4 @@
-﻿"""Canonical Cognitive ABI v1.0.0 and Runtime Validation for Cognitia.
+"""Canonical Cognitive ABI v1.0.0 and Runtime Validation for Cognitia.
 
 Separates Canonical ABI Semantic Invariants from Runtime Transport Limits.
 """
@@ -251,6 +251,56 @@ class ABIValidator:
         dataset = data.get("dataset")
         if not isinstance(dataset, list):
             raise ABIValidationError("Field 'dataset' must be a list of evaluation samples")
+
+        cls._validate_resource_limits(data, 0)
+        return data
+
+    @classmethod
+    def validate_domain_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate a domain registration request."""
+        if not isinstance(data, dict):
+            raise ABIValidationError("Message root must be a JSON object")
+
+        domain_id = data.get("domain_id")
+        if not domain_id or not isinstance(domain_id, str):
+            raise ABIValidationError("Field 'domain_id' must be a non-empty string")
+
+        cls._validate_resource_limits(data, 0)
+        return data
+
+    @classmethod
+    def validate_transfer_proposal_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate a transfer proposal creation request."""
+        if not isinstance(data, dict):
+            raise ABIValidationError("Message root must be a JSON object")
+
+        source_domain_id = data.get("source_domain_id")
+        target_domain_id = data.get("target_domain_id")
+        source_model_id = data.get("source_model_id")
+
+        if not source_domain_id or not isinstance(source_domain_id, str):
+            raise ABIValidationError("Field 'source_domain_id' must be a non-empty string")
+        if not target_domain_id or not isinstance(target_domain_id, str):
+            raise ABIValidationError("Field 'target_domain_id' must be a non-empty string")
+        if not source_model_id or not isinstance(source_model_id, str):
+            raise ABIValidationError("Field 'source_model_id' must be a non-empty string")
+
+        cls._validate_resource_limits(data, 0)
+        return data
+
+    @classmethod
+    def validate_transfer_decision_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate an external transfer decision request."""
+        if not isinstance(data, dict):
+            raise ABIValidationError("Message root must be a JSON object")
+
+        proposal_id = data.get("proposal_id")
+        decision = data.get("decision")
+
+        if not proposal_id or not isinstance(proposal_id, str):
+            raise ABIValidationError("Field 'proposal_id' must be a non-empty string")
+        if not decision or not isinstance(decision, str):
+            raise ABIValidationError("Field 'decision' must be a non-empty string")
 
         cls._validate_resource_limits(data, 0)
         return data

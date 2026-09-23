@@ -376,6 +376,83 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+
+        elif path == "/v1/learning/domains":
+            domains = self.epistemic_bridge.adaptive_learning.list_domains()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(domains),
+                    "domains": [
+                        {
+                            "id": d.id,
+                            "domain_id": d.domain_id,
+                            "domain_version": d.domain_version,
+                            "description": d.description,
+                            "representation_version": d.representation_version,
+                            "declared_providers": d.declared_providers,
+                            "metadata": d.metadata,
+                        }
+                        for d in domains
+                    ],
+                },
+            )
+            return
+
+        elif path == "/v1/learning/transfer/proposals":
+            t_proposals = self.epistemic_bridge.adaptive_learning.list_transfer_proposals()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(t_proposals),
+                    "proposals": [
+                        {
+                            "id": p.id,
+                            "source_domain_id": p.source_domain_id,
+                            "target_domain_id": p.target_domain_id,
+                            "transfer_type": p.transfer_type.value if hasattr(p.transfer_type, "value") else str(p.transfer_type),
+                            "knowledge_type": p.knowledge_type.value if hasattr(p.knowledge_type, "value") else str(p.knowledge_type),
+                            "source_model_id": p.source_model_id,
+                            "source_model_version": p.source_model_version,
+                            "target_model_id": p.target_model_id,
+                            "target_base_model_version": p.target_base_model_version,
+                            "rationale": p.rationale,
+                            "authority": p.authority,
+                            "metadata": p.metadata,
+                        }
+                        for p in t_proposals
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/transfer/decisions":
+            t_decisions = self.epistemic_bridge.adaptive_learning.list_transfer_decisions()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(t_decisions),
+                    "decisions": [
+                        {
+                            "id": d.id,
+                            "proposal_id": d.proposal_id,
+                            "decision": d.decision,
+                            "decider_id": d.decider_id,
+                            "decision_source": d.decision_source,
+                            "rationale": d.rationale,
+                            "cognitia_authority": d.cognitia_authority,
+                            "metadata": d.metadata,
+                        }
+                        for d in t_decisions
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
         elif path == "/v1/providers":
             providers = self.provider_registry.list_providers()
             self._send_json(HTTPStatus.OK, {"providers": providers})
@@ -776,6 +853,178 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 )
             except Exception as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, "LEARNING_REPLAY_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/domains":
+            try:
+                ABIValidator.validate_domain_dict(body)
+                from cognitia.learning.contract import LearningDomain
+
+                domain = LearningDomain(
+                    domain_id=body["domain_id"],
+                    domain_version=body.get("domain_version", "1.0.0"),
+                    description=body.get("description", ""),
+                    representation_version=body.get("representation_version", "1.0.0"),
+                    declared_providers=body.get("declared_providers", ["laya"]),
+                    metadata=body.get("metadata", {}),
+                )
+                registered = self.epistemic_bridge.adaptive_learning.register_domain(domain)
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "domain_registered",
+                        "domain_id": registered.domain_id,
+                        "domain_version": registered.domain_version,
+                        "description": registered.description,
+                        "representation_version": registered.representation_version,
+                        "declared_providers": registered.declared_providers,
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "DOMAIN_REGISTRATION_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/transfer/proposals":
+            try:
+                ABIValidator.validate_transfer_proposal_dict(body)
+                from cognitia.learning.contract import KnowledgeType, TransferType
+
+                proposal = self.epistemic_bridge.adaptive_learning.create_transfer_proposal(
+                    source_domain_id=body["source_domain_id"],
+                    target_domain_id=body["target_domain_id"],
+                    source_model_id=body["source_model_id"],
+                    source_model_version=body.get("source_model_version", "1.0.0"),
+                    target_model_id=body.get("target_model_id", body["source_model_id"]),
+                    target_base_model_version=body.get("target_base_model_version", "1.0.0"),
+                    transfer_type=TransferType(body.get("transfer_type", "model_transfer")),
+                    knowledge_type=KnowledgeType(body.get("knowledge_type", "feature_extractor")),
+                    rationale=body.get("rationale", ""),
+                    transfer_payload=body.get("transfer_payload", {}),
+                    metadata=body.get("metadata", {}),
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "transfer_proposal_created",
+                        "id": proposal.id,
+                        "source_domain_id": proposal.source_domain_id,
+                        "target_domain_id": proposal.target_domain_id,
+                        "transfer_type": proposal.transfer_type.value,
+                        "knowledge_type": proposal.knowledge_type.value,
+                        "rationale": proposal.rationale,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "TRANSFER_PROPOSAL_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/transfer/evaluate":
+            try:
+                proposal_id = body.get("proposal_id")
+                if proposal_id:
+                    proposal = self.epistemic_bridge.adaptive_learning._transfer_proposals.get(proposal_id)
+                    if not proposal:
+                        self._send_error(HTTPStatus.NOT_FOUND, "PROPOSAL_NOT_FOUND", f"Proposal '{proposal_id}' not found")
+                        return
+                    result = self.epistemic_bridge.adaptive_learning.evaluate_transfer_compatibility(proposal)
+                else:
+                    ABIValidator.validate_transfer_proposal_dict(body)
+                    from cognitia.learning.contract import KnowledgeType, LearningTransferProposal, TransferType
+                    temp_prop = LearningTransferProposal(
+                        source_domain_id=body["source_domain_id"],
+                        target_domain_id=body["target_domain_id"],
+                        source_model_id=body["source_model_id"],
+                        source_model_version=body.get("source_model_version", "1.0.0"),
+                        target_model_id=body.get("target_model_id", body["source_model_id"]),
+                        target_base_model_version=body.get("target_base_model_version", "1.0.0"),
+                        transfer_type=TransferType(body.get("transfer_type", "model_transfer")),
+                        knowledge_type=KnowledgeType(body.get("knowledge_type", "feature_extractor")),
+                        rationale=body.get("rationale", ""),
+                        transfer_payload=body.get("transfer_payload", {}),
+                    )
+                    result = self.epistemic_bridge.adaptive_learning.evaluate_transfer_compatibility(temp_prop)
+
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "compatibility_evaluated",
+                        "id": result.id,
+                        "compatibility_status": result.status.value,
+                        "score": result.score,
+                        "compatibility_details": result.compatibility_details,
+                        "risks": result.risks,
+                        "advisory_recommendation": result.advisory_recommendation,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "TRANSFER_EVALUATION_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/transfer/instantiate-candidate":
+            try:
+                proposal_id = body.get("proposal_id", "")
+                if not proposal_id:
+                    self._send_error(HTTPStatus.BAD_REQUEST, "MISSING_FIELD", "Field 'proposal_id' is required")
+                    return
+
+                candidate = self.epistemic_bridge.adaptive_learning.instantiate_transfer_candidate(
+                    proposal_id=proposal_id,
+                    target_candidate_version=body.get("target_candidate_version"),
+                    seed=int(body.get("seed", 42)),
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "target_candidate_instantiated",
+                        "candidate_model_id": candidate.candidate_model_id,
+                        "candidate_model_version": candidate.candidate_model_version,
+                        "domain_id": candidate.domain_id,
+                        "parent_model_id": candidate.parent_model_id,
+                        "parent_model_version": candidate.parent_model_version,
+                        "parameter_fingerprint": candidate.parameter_fingerprint,
+                        "authority": "NONE",
+                        "message": "Candidate created in target domain. Active model remains untouched.",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "TRANSFER_INSTANTIATION_ERROR", str(exc))
+            return
+
+        elif path == "/v1/learning/transfer/decision":
+            try:
+                ABIValidator.validate_transfer_decision_dict(body)
+                rec = self.epistemic_bridge.adaptive_learning.record_transfer_decision(
+                    proposal_id=body["proposal_id"],
+                    decision=body["decision"],
+                    decider_id=body.get("decider_id", "external_governance"),
+                    rationale=body.get("rationale", ""),
+                    metadata=body.get("metadata", {}),
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "transfer_decision_recorded",
+                        "id": rec.id,
+                        "proposal_id": rec.proposal_id,
+                        "decision": rec.decision,
+                        "decider_id": rec.decider_id,
+                        "decision_source": rec.decision_source,
+                        "cognitia_authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "TRANSFER_DECISION_ERROR", str(exc))
+            return
+
+        elif path in ("/v1/learning/transfer/activate", "/v1/transfer/activate", "/v1/learning/activate"):
+            self._send_error(
+                HTTPStatus.FORBIDDEN,
+                "ActivationForbidden",
+                "Activation is an external domain authority operation and cannot be controlled or executed by Cognitia.",
+                correlation_id,
+            )
             return
         elif path == "/v1/providers/register":
             self._send_error(
