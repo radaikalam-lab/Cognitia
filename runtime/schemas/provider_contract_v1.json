@@ -1,0 +1,50 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CognitiaProviderContractV1",
+  "type": "object",
+  "required": [
+    "provider_id",
+    "provider_name",
+    "provider_version",
+    "adapter_version",
+    "supported_abi_versions",
+    "capabilities",
+    "authority_level"
+  ],
+  "properties": {
+    "provider_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_\\-\\.]+$"
+    },
+    "provider_name": {
+      "type": "string"
+    },
+    "provider_version": {
+      "type": "string"
+    },
+    "adapter_version": {
+      "type": "string"
+    },
+    "supported_abi_versions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "authority_level": {
+      "type": "string",
+      "enum": ["NONE"]
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["local_http", "named_pipe", "unix_socket"]
+    },
+    "allowed_content_types": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,36 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CognitiaObservationApiV1",
+  "type": "object",
+  "required": [
+    "id",
+    "schema_version",
+    "created_at",
+    "source_id",
+    "payload"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,48 @@
+﻿{
+  "providers": [
+    {
+      "provider_id": "thorium.browser",
+      "provider_name": "Lean Thorium Browser Reference Provider",
+      "provider_version": "138.0.7204.306",
+      "adapter_version": "1.1.0",
+      "supported_abi_versions": ["1.0.0"],
+      "capabilities": [
+        "observe.navigation",
+        "observe.tab",
+        "observe.page_metadata",
+        "observe.authorized_content"
+      ],
+      "authority_level": "NONE",
+      "transport": "named_pipe_or_local_http",
+      "allowed_content_types": ["untrusted_web_content"]
+    },
+    {
+      "provider_id": "frappe.adapter",
+      "provider_name": "Frappe ERP Reference Provider",
+      "provider_version": "1.0.0",
+      "adapter_version": "1.0.0",
+      "supported_abi_versions": ["1.0.0"],
+      "capabilities": [
+        "observe.doc_created",
+        "observe.doc_updated"
+      ],
+      "authority_level": "NONE",
+      "transport": "local_http",
+      "allowed_content_types": ["erp_telemetry"]
+    },
+    {
+      "provider_id": "acoustiforge.adapter",
+      "provider_name": "AcoustiForge Reference Provider",
+      "provider_version": "1.0.0",
+      "adapter_version": "1.0.0",
+      "supported_abi_versions": ["1.0.0"],
+      "capabilities": [
+        "observe.measurement",
+        "propose.design"
+      ],
+      "authority_level": "NONE",
+      "transport": "local_http",
+      "allowed_content_types": ["acoustic_measurement"]
+    }
+  ]
+}

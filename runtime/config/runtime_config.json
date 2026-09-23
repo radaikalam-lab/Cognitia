@@ -1,0 +1,26 @@
+﻿{
+  "runtime_version": "1.0.0",
+  "cognitia_abi_version": "1.0.0",
+  "protocol_version": "1.0.0",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "max_request_bytes": 524288,
+    "request_timeout_seconds": 5.0,
+    "rate_limit_per_minute": 600
+  },
+  "security": {
+    "local_first_only": true,
+    "enforce_provider_whitelist": true,
+    "structural_credential_exclusion": true,
+    "untrusted_content_tagging": true,
+    "enable_execution_apis": false
+  },
+  "epistemic": {
+    "service_type": "in_memory",
+    "max_nodes": 50000
+  },
+  "directional": {
+    "advisory_only": true
+  }
+}
