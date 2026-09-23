@@ -1,15 +1,13 @@
-﻿# Minimal Standalone Cognitia Runtime Container
+﻿# Cognitia Standalone Runtime Container
 # Local-first, unprivileged, non-root, read-only root compatible
 
 FROM python:3.12-slim
 
-# Set environment
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src:/app \
     COGNITIA_HOST=0.0.0.0 \
-    COGNITIA_PORT=8000 \
-    ALLOW_INSECURE_BIND=1
+    COGNITIA_PORT=8000
 
 WORKDIR /app
 
@@ -28,10 +26,10 @@ RUN chown -R cognitia:cognitia /app
 # Switch to non-root user
 USER cognitia
 
-# Expose local service port
+# Expose service port
 EXPOSE 8000
 
-# Health check using standard python urllib
+# Health check
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
   CMD python /app/runtime/scripts/health_check.py http://127.0.0.1:8000/v1/health || exit 1
 

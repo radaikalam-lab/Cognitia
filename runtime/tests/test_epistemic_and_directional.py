@@ -52,6 +52,33 @@ class TestEpistemicDirectional(unittest.TestCase):
         self.assertEqual(node.node_id, obs_id)
         self.assertEqual(node.content.metadata["provenance_producer"], "thorium.browser")
 
+    def test_evidence_ingestion_canonical(self):
+        ev_id = str(uuid.uuid4())
+        created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        ev_dict = {
+            "id": ev_id,
+            "schema_version": "1.0.0",
+            "created_at": created_at,
+            "target_id": "hypo-12345",
+            "direction": "SUPPORT",
+            "confidence": 0.95,
+            "weight": 1.0,
+            "observation_ids": ["obs-1", "obs-2"],
+            "metadata": {"source": "thorium"},
+        }
+
+        res = self.bridge.ingest_evidence(
+            ev_dict, provider_id="thorium.browser", capability="observe.authorized_content"
+        )
+        self.assertEqual(res["status"], "ingested")
+        self.assertEqual(res["entity_type"], "evidence")
+        self.assertEqual(res["entity_id"], ev_id)
+        self.assertEqual(res["target_id"], "hypo-12345")
+
+        node = self.service.get_node(res["node_id"])
+        self.assertIsNotNone(node)
+        self.assertEqual(node.entity_type, "evidence")
+
     def test_directional_specification_is_strictly_advisory(self):
         spec_id = str(uuid.uuid4())
         spec_dict = {
@@ -64,9 +91,9 @@ class TestEpistemicDirectional(unittest.TestCase):
         }
 
         proposal = self.bridge.ingest_directional_specification(
-            spec_dict, provider_id="acoustiforge"
+            spec_dict, provider_id="acoustiforge.adapter"
         )
-        self.assertEqual(proposal["status"], "advisory_candidate")
+        self.assertEqual(proposal["proposal_status"], "proposed")
         self.assertEqual(proposal["authority"], "NONE")
         self.assertIn("Epistemic Novelty != Production Authority", proposal["message"])
 

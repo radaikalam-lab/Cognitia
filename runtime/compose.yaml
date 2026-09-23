@@ -1,16 +1,17 @@
 ﻿services:
-  cognitia-runtime:
+  cognitia:
     build:
       context: ..
       dockerfile: runtime/Dockerfile
-    container_name: cognitia-standalone-runtime
+    image: cognitia:1.0.0
+    container_name: cognitia
     restart: unless-stopped
     read_only: true
     tmpfs:
       - /tmp
     ports:
       # Bound strictly to 127.0.0.1 (Local-First security invariant)
-      # Uses host port 8001 to avoid conflicts with other local services
+      # Host port 8001 maps to Container port 8000
       - "127.0.0.1:8001:8000"
     cap_drop:
       - ALL
@@ -19,7 +20,6 @@
     environment:
       - COGNITIA_HOST=0.0.0.0
       - COGNITIA_PORT=8000
-      - ALLOW_INSECURE_BIND=1
     healthcheck:
       test: ["CMD", "python", "/app/runtime/scripts/health_check.py", "http://127.0.0.1:8000/v1/health"]
       interval: 15s

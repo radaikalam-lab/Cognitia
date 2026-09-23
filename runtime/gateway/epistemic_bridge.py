@@ -1,8 +1,10 @@
-﻿"""Epistemic Subsystem Bridge for Cognitia Runtime Gateway."""
+﻿"""Epistemic Subsystem Bridge for Cognitia Standalone Runtime."""
 
 from __future__ import annotations
 
 import sys
+import threading
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +15,19 @@ if str(COGNITIA_SRC) not in sys.path:
 
 from cognitia.abi.types import Observation, SCHEMA_VERSION_V1, DeterministicSerializer
 from cognitia.provenance.record import ProvenanceRecord, SourceType
-from cognitia.epistemic.service import InMemoryEpistemicService
-from cognitia.directional.types import DirectionalSpecification, DirectionalProposal
+from cognitia.epistemic.service import InMemoryEpistemicService, Evidence, EvidenceDirection
+from cognitia.directional.types import (
+    DirectionalSpecification,
+    DirectionalProposal,
+    ProposalLifecycleStatus,
+    EpistemicStatus,
+)
+
+MAX_EPISTEMIC_NODES = 50000
+
+
+class EpistemicCapacityExceededError(RuntimeError):
+    """Raised when the epistemic node capacity ceiling is reached."""
 
 
 class EpistemicBridge:
@@ -23,7 +36,9 @@ class EpistemicBridge:
     def __init__(self, epistemic_service: InMemoryEpistemicService | None = None) -> None:
         self.epistemic_service = epistemic_service or InMemoryEpistemicService()
         self._provenance_store: dict[str, ProvenanceRecord] = {}
-        self._ingested_count = 0
+        self._lock = threading.Lock()
+        self._ingested_observations_count = 0
+        self._ingested_evidence_count = 0
 
     def ingest_observation(
         self,
@@ -35,93 +50,177 @@ class EpistemicBridge:
 
         and ingest into the Epistemic service.
         """
-        # 1. Build canonical ProvenanceRecord
-        prov_dict = obs_dict.get("provenance") or obs_dict.get("metadata", {}).get("provenance")
-        if prov_dict and isinstance(prov_dict, dict):
-            prov = ProvenanceRecord(
-                producer_id=prov_dict.get("producer_id", provider_id),
-                capability_id=prov_dict.get("capability_id", capability),
-                source_type=SourceType.SENSOR,
-                created_at=obs_dict.get("created_at"),
-                metadata=prov_dict.get("metadata", {}),
+        with self._lock:
+            if len(self.epistemic_service._nodes) >= MAX_EPISTEMIC_NODES:
+                raise EpistemicCapacityExceededError(
+                    f"Epistemic capacity reached maximum limit ({MAX_EPISTEMIC_NODES} nodes)"
+                )
+
+            # 1. Build canonical ProvenanceRecord
+            prov_dict = obs_dict.get("provenance") or obs_dict.get("metadata", {}).get("provenance")
+            if prov_dict and isinstance(prov_dict, dict):
+                prov = ProvenanceRecord(
+                    producer_id=prov_dict.get("producer_id", provider_id),
+                    capability_id=prov_dict.get("capability_id", capability),
+                    source_type=SourceType.SENSOR,
+                    created_at=obs_dict.get("created_at"),
+                    metadata=prov_dict.get("metadata", {}),
+                )
+            else:
+                prov = ProvenanceRecord(
+                    producer_id=provider_id,
+                    capability_id=capability,
+                    source_type=SourceType.SENSOR,
+                    created_at=obs_dict.get("created_at"),
+                    metadata={
+                        "capability": capability,
+                        "provider_id": provider_id,
+                    },
+                )
+            self._provenance_store[prov.id] = prov
+
+            # 2. Attach provenance reference to Observation metadata
+            obs_metadata = dict(obs_dict.get("metadata", {}))
+            obs_metadata["provenance_id"] = prov.id
+            obs_metadata["provenance_producer"] = prov.producer_id
+            obs_metadata["provenance_capability"] = prov.capability_id
+
+            # 3. Build canonical Observation
+            observation = Observation(
+                id=obs_dict["id"],
+                schema_version=obs_dict.get("schema_version", SCHEMA_VERSION_V1),
+                created_at=obs_dict["created_at"],
+                source_id=obs_dict.get("source_id", provider_id),
+                metadata=obs_metadata,
+                payload=obs_dict.get("payload", {}),
             )
-        else:
+
+            # 4. Record in Epistemic Service
+            node = self.epistemic_service.record_observation(observation)
+            self._ingested_observations_count += 1
+
+            return {
+                "status": "ingested",
+                "entity_type": "observation",
+                "node_id": node.node_id,
+                "entity_id": observation.id,
+                "epistemic_status": node.status.value,
+                "provenance_id": prov.id,
+            }
+
+    def ingest_evidence(
+        self,
+        evidence_dict: dict[str, Any],
+        provider_id: str,
+        capability: str,
+    ) -> dict[str, Any]:
+        """Convert validated evidence dictionary into canonical Evidence & ProvenanceRecord
+
+        and register with Epistemic service.
+        """
+        with self._lock:
+            if len(self.epistemic_service._nodes) >= MAX_EPISTEMIC_NODES:
+                raise EpistemicCapacityExceededError(
+                    f"Epistemic capacity reached maximum limit ({MAX_EPISTEMIC_NODES} nodes)"
+                )
+
             prov = ProvenanceRecord(
                 producer_id=provider_id,
                 capability_id=capability,
                 source_type=SourceType.SENSOR,
-                created_at=obs_dict.get("created_at"),
-                metadata={
-                    "capability": capability,
-                    "provider_id": provider_id,
-                },
+                created_at=evidence_dict.get("created_at"),
+                metadata={"capability": capability, "provider_id": provider_id},
             )
-        self._provenance_store[prov.id] = prov
+            self._provenance_store[prov.id] = prov
 
-        # 2. Attach provenance reference to Observation metadata
-        obs_metadata = dict(obs_dict.get("metadata", {}))
-        obs_metadata["provenance_id"] = prov.id
-        obs_metadata["provenance_producer"] = prov.producer_id
-        obs_metadata["provenance_capability"] = prov.capability_id
+            direction_str = evidence_dict.get("direction", "SUPPORT").upper()
+            direction = (
+                EvidenceDirection.SUPPORT
+                if direction_str == "SUPPORT"
+                else (
+                    EvidenceDirection.REFUTE
+                    if direction_str == "REFUTE"
+                    else EvidenceDirection.NEUTRAL
+                )
+            )
 
-        # 3. Build canonical Observation
-        observation = Observation(
-            id=obs_dict["id"],
-            schema_version=obs_dict.get("schema_version", SCHEMA_VERSION_V1),
-            created_at=obs_dict["created_at"],
-            source_id=obs_dict.get("source_id", provider_id),
-            metadata=obs_metadata,
-            payload=obs_dict.get("payload", {}),
-        )
+            evidence = Evidence(
+                id=evidence_dict["id"],
+                schema_version=evidence_dict.get("schema_version", SCHEMA_VERSION_V1),
+                created_at=evidence_dict["created_at"],
+                target_id=evidence_dict["target_id"],
+                direction=direction,
+                confidence=float(evidence_dict.get("confidence", 1.0)),
+                weight=float(evidence_dict.get("weight", 1.0)),
+                provenance=prov,
+                observation_ids=evidence_dict.get("observation_ids", []),
+                metadata=evidence_dict.get("metadata", {}),
+            )
 
-        # 4. Record in Epistemic Service
-        node = self.epistemic_service.record_observation(observation)
-        self._ingested_count += 1
+            node = self.epistemic_service.register_evidence(evidence)
+            self._ingested_evidence_count += 1
 
-        return {
-            "status": "ingested",
-            "node_id": node.node_id,
-            "entity_id": observation.id,
-            "epistemic_status": node.status.value,
-            "provenance_id": prov.id,
-        }
+            return {
+                "status": "ingested",
+                "entity_type": "evidence",
+                "node_id": node.node_id,
+                "entity_id": evidence.id,
+                "target_id": evidence.target_id,
+                "epistemic_status": node.status.value,
+                "provenance_id": prov.id,
+            }
 
     def ingest_directional_specification(
         self,
         spec_dict: dict[str, Any],
         provider_id: str,
     ) -> dict[str, Any]:
-        """Ingest a Directional Specification and return an ADVISORY candidate proposal.
+        """Ingest a Directional Specification and emit a canonical DirectionalProposal.
 
-        CRITICAL: This proposal is strictly advisory and NEVER executed.
+        CRITICAL: Proposals are strictly advisory candidates and NEVER executed.
         """
-        spec_id = spec_dict.get("id")
-        objectives = spec_dict.get("objectives", [])
-        constraints = spec_dict.get("constraints", [])
-        success_criteria = spec_dict.get("success_criteria", [])
+        with self._lock:
+            spec_id = spec_dict["id"]
 
-        # Invariant check: Directional specifications cannot mandate direct command execution
-        proposal = {
-            "proposal_id": f"prop-{spec_id}",
-            "specification_id": spec_id,
-            "provider_id": provider_id,
-            "status": "advisory_candidate",
-            "authority": "NONE",
-            "evaluations": [
-                {
-                    "objective": obj.get("description", str(obj)),
-                    "feasibility": "epistemic_advisory_only",
-                }
-                for obj in objectives
-            ],
-            "message": "Directional specification evaluated. Epistemic Novelty != Production Authority.",
-        }
-        return proposal
+            prov = ProvenanceRecord(
+                producer_id="cognitia.runtime.directional",
+                capability_id="propose.directional",
+                source_type=SourceType.REASONING_ENGINE,
+                metadata={"specification_id": spec_id, "provider_id": provider_id},
+            )
+
+            proposal = DirectionalProposal(
+                specification_id=spec_id,
+                provider_id=provider_id,
+                provider_version="1.0.0",
+                proposed_actions=(),
+                residuals=(),
+                confidence=0.85,
+                proposal_status=ProposalLifecycleStatus.PROPOSED,
+                epistemic_status=EpistemicStatus.UNRESOLVED,
+                provenance=prov,
+                metadata={"advisory_only": True, "authority": "NONE"},
+            )
+
+            return {
+                "proposal_id": proposal.id,
+                "specification_id": proposal.specification_id,
+                "provider_id": proposal.provider_id,
+                "proposal_status": proposal.proposal_status.value,
+                "epistemic_status": proposal.epistemic_status.value,
+                "confidence": proposal.confidence,
+                "authority": "NONE",
+                "message": "Directional proposal emitted. Epistemic Novelty != Production Authority.",
+                "provenance_id": prov.id,
+            }
 
     def get_status_summary(self) -> dict[str, Any]:
-        return {
-            "epistemic_service": "InMemoryEpistemicService",
-            "total_ingested_observations": self._ingested_count,
-            "active_nodes_count": len(self.epistemic_service._nodes),
-            "status": "available",
-        }
+        with self._lock:
+            return {
+                "epistemic_service": "InMemoryEpistemicService",
+                "total_ingested_observations": self._ingested_observations_count,
+                "total_ingested_evidence": self._ingested_evidence_count,
+                "active_nodes_count": len(self.epistemic_service._nodes),
+                "max_node_capacity": MAX_EPISTEMIC_NODES,
+                "status": "available",
+            }

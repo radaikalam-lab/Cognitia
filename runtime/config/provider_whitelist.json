@@ -1,10 +1,13 @@
 ﻿{
+  "version": "1.0.0",
+  "comment": "Authoritative Static Provider Whitelist for Cognitia Standalone Runtime",
   "providers": [
     {
       "provider_id": "thorium.browser",
-      "provider_name": "Lean Thorium Browser Reference Provider",
+      "provider_name": "Lean Thorium Reference Browser Adapter",
       "provider_version": "138.0.7204.306",
-      "adapter_version": "1.1.0",
+      "adapter_version": "1.0.0",
+      "status": "OPERATIONAL_REFERENCE",
       "supported_abi_versions": ["1.0.0"],
       "capabilities": [
         "observe.navigation",
@@ -13,36 +16,40 @@
         "observe.authorized_content"
       ],
       "authority_level": "NONE",
-      "transport": "named_pipe_or_local_http",
-      "allowed_content_types": ["untrusted_web_content"]
+      "transport": "local_http",
+      "allowed_content_types": ["text/plain", "application/json", "text/html"]
     },
     {
       "provider_id": "frappe.adapter",
-      "provider_name": "Frappe ERP Reference Provider",
+      "provider_name": "Frappe ERP Reference Adapter",
       "provider_version": "1.0.0",
       "adapter_version": "1.0.0",
+      "status": "PLANNED_REFERENCE",
       "supported_abi_versions": ["1.0.0"],
       "capabilities": [
-        "observe.doc_created",
-        "observe.doc_updated"
+        "observe.ledger",
+        "observe.orders",
+        "observe.inventory"
       ],
       "authority_level": "NONE",
       "transport": "local_http",
-      "allowed_content_types": ["erp_telemetry"]
+      "allowed_content_types": ["application/json"]
     },
     {
       "provider_id": "acoustiforge.adapter",
-      "provider_name": "AcoustiForge Reference Provider",
+      "provider_name": "AcoustiForge Reference Adapter",
       "provider_version": "1.0.0",
       "adapter_version": "1.0.0",
+      "status": "PLANNED_REFERENCE",
       "supported_abi_versions": ["1.0.0"],
       "capabilities": [
-        "observe.measurement",
-        "propose.design"
+        "observe.measurements",
+        "propose.resonances",
+        "propose.damping_model"
       ],
       "authority_level": "NONE",
       "transport": "local_http",
-      "allowed_content_types": ["acoustic_measurement"]
+      "allowed_content_types": ["application/json"]
     }
   ]
 }

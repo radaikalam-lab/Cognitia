@@ -1,18 +1,22 @@
 ﻿# Cognitia Standalone Runtime Architecture
 
 **Document Version:** 1.0.0  
-**Cognitive ABI Version:** 1.0.0  
-**Status:** Approved & Implemented  
+**Runtime Identity:** `Cognitia`  
+**Docker Image:** `cognitia:1.0.0`  
+**Container Name:** `cognitia`  
+**Cognitive ABI:** `1.0.0`  
+**Status:** Hardened & Validated  
 
 ---
 
-## 1. Architectural Model
+## 1. System Topology
 
-Cognitia is designed as an autonomous, application-neutral epistemic reasoning engine. Applications interface strictly as **independent providers** through adapter bridges.
+Cognitia is an autonomous, domain-neutral epistemic reasoning service. External host applications interact strictly as **providers** through canonical adapter layers.
 
 ```
                          ┌─────────────────────────────────┐
-                         │   Cognitia Standalone Runtime   │
+                         │             COGNITIA            │
+                         │        Standalone Runtime       │
                          │                                 │
                          │  ┌───────────────────────────┐  │
                          │  │  InMemoryEpistemicService │  │
@@ -26,22 +30,21 @@ Cognitia is designed as an autonomous, application-neutral epistemic reasoning e
                          │  └─────────────▲─────────────┘  │
                          │                │                │
                          │  ┌─────────────┴─────────────┐  │
-                         │  │  Cognitia Gateway Layer   │  │
+                         │  │    Cognitia Gateway API   │  │
                          │  │   - ABI 1.0.0 Validator   │  │
                          │  │   - Provider Registry     │  │
                          │  │   - Security Sanitizer    │  │
                          │  │   - Local HTTP Server     │  │
                          │  └─────────────▲─────────────┘  │
                          └────────────────┼────────────────┘
-                                          │ Localhost Only (127.0.0.1:8000)
+                                          │ 127.0.0.1:8000 Only
                                           │
                   ┌───────────────────────┼───────────────────────┐
                   │                       │                       │
                   ▼                       ▼                       ▼
       ┌───────────────────────┐ ┌───────────────────┐ ┌───────────────────────┐
       │ Thorium Browser Adapt │ │  Frappe ERP Adapt │ │ AcoustiForge Adapter  │
-      │ (observe.navigation   │ │ (observe.ledger   │ │ (observe.acoustics    │
-      │  observe.content)     │ │  observe.orders)  │ │  propose.resonances)  │
+      │ (OPERATIONAL_REF)     │ │ (PLANNED_REF)     │ │ (PLANNED_REF)         │
       │ Authority: NONE       │ │ Authority: NONE   │ │ Authority: NONE       │
       └───────────────────────┘ └───────────────────┘ └───────────────────────┘
 ```
@@ -50,21 +53,25 @@ Cognitia is designed as an autonomous, application-neutral epistemic reasoning e
 
 ## 2. Process Separation & Responsibilities
 
-### 2.1 The Gateway Layer
-- **Transport:** Local-only REST interface on `127.0.0.1:8000`.
-- **Validation:** ABI 1.0.0 schema conformance, UUIDv4 entity checks, ISO-8601 UTC timestamp format.
-- **Provider Authorization:** Matches provider ID against registered whitelist; verifies declared capabilities.
-- **Security Sanitization:** Strips/rejects execution directives (`exec`, `command`, `system`), detects credential leaks, enforces payload size caps (512 KB), and tags untrusted external data.
+### 2.1 The Gateway Boundary (`runtime/gateway/`)
+- **Transport:** HTTP/1.1 over `127.0.0.1:8000`.
+- **Validation:** 
+  - Canonical ABI v1.0.0: UUIDv4 entity check, SemVer 1.x schema version, UTC ISO-8601 timestamps.
+  - Runtime Limits: 512 KB payload cap, nesting depth <= 10, max string <= 256 KB.
+- **Provider Identification:** `X-Cognitia-Provider-Id` matches against static whitelist. Dynamic provider registration is permanently disabled in Runtime 1.0.
+- **Capability Gating:** Rejects undeclared capabilities (`403 Forbidden`).
+- **Security Sanitization:** Strips/rejects execution directives (`exec`, `command`, `shell`, `system`), detects structured credential leakage, and tags external browser content with `is_untrusted_external_content = true`.
 
-### 2.2 The Epistemic Core
-- Maintains canonical `Observation`, `ProvenanceRecord`, `Evidence`, `Claim`, and `EpistemicNode` structures.
-- Implements state transitions (`OBSERVED`, `SUPPORTED`, `CHALLENGED`, `REFUTED`).
-- Evaluates `DirectionalSpecification` inputs and emits advisory `DirectionalProposal` candidate structures.
+### 2.2 The Epistemic Core (`src/cognitia/epistemic/`)
+- **Epistemic Nodes:** Holds immutable nodes for observations, evidence, hypotheses, and claims.
+- **Node Capacity:** Enforces bounded in-memory capacity (50,000 nodes max).
+- **Transitions:** Non-linear state transitions (`UNKNOWN`, `OBSERVED`, `HYPOTHESIS`, `SUPPORTED`, `REFUTED`, `UNRESOLVED`).
+- **Directional Programming:** Ingests specifications and emits advisory candidate `DirectionalProposal` instances. Zero execution logic is permitted.
 
 ---
 
-## 3. Epistemic Invariants
+## 3. Core Invariants
 
-1. **Epistemic Novelty ≠ Production Authority:** Cognitia may identify patterns, generate hypotheses, or propose directions, but never directly acts upon or commands external systems.
-2. **Untrusted Data Remains Data:** External content (e.g. web pages extracted by Thorium) is strictly passive data, flagged with `is_untrusted_external_content = true`.
-3. **Deterministic Serialization:** Ingestion and hash verification utilize canonical key sorting and compact representation.
+1. **Epistemic Novelty ≠ Production Authority:** Cognitia never commands external tools, browsers, or operating system processes.
+2. **Untrusted Data Remains Data:** External text (including web content from Thorium) is passive data and cannot become executable instructions.
+3. **Deterministic Serialization:** Invariant hashing and comparisons adhere to UTF-8 canonical JSON key sorting.

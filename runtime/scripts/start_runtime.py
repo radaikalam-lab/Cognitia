@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -21,31 +22,38 @@ from runtime.gateway.app import create_gateway_server
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [CognitiaRuntime] %(message)s",
+    format="%(asctime)s [%(levelname)s] [Cognitia] %(message)s",
 )
-logger = logging.getLogger("CognitiaRuntime")
+logger = logging.getLogger("Cognitia")
 
 
 def main() -> None:
+    config_dir = RUNTIME_DIR / "config"
+    runtime_cfg_path = config_dir / "runtime_config.json"
+    default_host = "127.0.0.1"
+    default_port = 8000
+
+    if runtime_cfg_path.exists():
+        try:
+            cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8-sig"))
+            default_host = cfg.get("host", default_host)
+            default_port = cfg.get("port", default_port)
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(description="Cognitia Standalone Runtime")
-    parser.add_argument("--host", default=os.getenv("COGNITIA_HOST", "127.0.0.1"), help="Host address (default 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=int(os.getenv("COGNITIA_PORT", "8000")), help="Port (default 8000)")
+    parser.add_argument("--host", default=os.getenv("COGNITIA_HOST", default_host), help="Host address")
+    parser.add_argument("--port", type=int, default=int(os.getenv("COGNITIA_PORT", default_port)), help="Port")
     args = parser.parse_args()
 
-    # Invariant: Never allow 0.0.0.0 binding in standalone mode unless explicitly controlled
-    if args.host == "0.0.0.0" and os.getenv("ALLOW_INSECURE_BIND") != "1":
-        logger.warning("Attempted to bind to 0.0.0.0. Resetting to 127.0.0.1 for local security.")
-        args.host = "127.0.0.1"
-
-    config_dir = RUNTIME_DIR / "config"
-    logger.info(f"Starting Cognitia Standalone Runtime on http://{args.host}:{args.port}")
-    logger.info(f"Cognitive ABI: 1.0.0 | Epistemic Subsystem: Active | Authority: NONE")
+    logger.info(f"Starting Cognitia on http://{args.host}:{args.port}")
+    logger.info("Cognitive ABI: 1.0.0 | Epistemic Subsystem: Active | Authority: NONE")
 
     server = create_gateway_server(host=args.host, port=args.port, config_dir=config_dir)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logger.info("Cognitia Runtime shutting down gracefully.")
+        logger.info("Cognitia shutting down gracefully.")
         server.server_close()
 
 

@@ -1,6 +1,6 @@
 ﻿"""Cognitia Standalone Runtime Gateway HTTP Service.
 
-Zero external dependencies - Uses Python Standard Library HTTP server.
+Zero external dependencies - Uses Python Standard Library ThreadingHTTPServer.
 Bound strictly to 127.0.0.1 (Local-First).
 """
 
@@ -20,10 +20,21 @@ COGNITIA_SRC = Path(__file__).resolve().parent.parent.parent / "src"
 if str(COGNITIA_SRC) not in sys.path:
     sys.path.insert(0, str(COGNITIA_SRC))
 
-from runtime.gateway.abi_validator import ABIValidator, ABIValidationError
-from runtime.gateway.provider_registry import ProviderRegistry, ProviderRecord
-from runtime.gateway.security import RateLimiter, SecuritySanitizer, SecurityValidationError
-from runtime.gateway.epistemic_bridge import EpistemicBridge
+from runtime.gateway.abi_validator import (
+    ABIValidator,
+    ABIValidationError,
+    RuntimeValidationError,
+)
+from runtime.gateway.provider_registry import ProviderRegistry
+from runtime.gateway.security import (
+    RateLimiter,
+    SecuritySanitizer,
+    SecurityValidationError,
+)
+from runtime.gateway.epistemic_bridge import (
+    EpistemicBridge,
+    EpistemicCapacityExceededError,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,15 +65,20 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw_body)
 
-    def _send_error(self, status_code: int, error_type: str, message: str, details: Any = None) -> None:
+    def _send_error(
+        self,
+        status_code: int,
+        error_type: str,
+        message: str,
+        correlation_id: str | None = None,
+    ) -> None:
         payload = {
             "status": "error",
             "error_type": error_type,
             "message": message,
+            "correlation_id": correlation_id or str(uuid.uuid4()),
             "timestamp": time.time(),
         }
-        if details:
-            payload["details"] = details
         self._send_json(status_code, payload)
 
     def do_GET(self) -> None:
@@ -75,28 +91,42 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
         elif path == "/v1/providers":
             self.handle_providers()
         else:
-            self._send_error(HTTPStatus.NOT_FOUND, "NotFound", f"Endpoint '{path}' not found.")
+            self._send_error(
+                HTTPStatus.NOT_FOUND, "NotFound", f"Endpoint '{path}' not found."
+            )
 
     def do_POST(self) -> None:
         path = self.path.split("?")[0]
+        correlation_id = str(uuid.uuid4())
 
         # 1. Content Length Check
         content_length_str = self.headers.get("Content-Length")
         if not content_length_str:
-            self._send_error(HTTPStatus.LENGTH_REQUIRED, "LengthRequired", "Missing Content-Length header")
+            self._send_error(
+                HTTPStatus.LENGTH_REQUIRED,
+                "LengthRequired",
+                "Missing Content-Length header",
+                correlation_id,
+            )
             return
 
         try:
             content_length = int(content_length_str)
         except ValueError:
-            self._send_error(HTTPStatus.BAD_REQUEST, "InvalidHeader", "Invalid Content-Length header")
+            self._send_error(
+                HTTPStatus.BAD_REQUEST,
+                "InvalidHeader",
+                "Invalid Content-Length header",
+                correlation_id,
+            )
             return
 
         if content_length > MAX_REQUEST_SIZE:
             self._send_error(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 "PayloadTooLarge",
-                f"Payload size {content_length} bytes exceeds 512 KB limit",
+                f"Payload size {content_length} bytes exceeds 512 KB transport limit",
+                correlation_id,
             )
             return
 
@@ -104,25 +134,36 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
         body_bytes = self.rfile.read(content_length)
         try:
             body_json = json.loads(body_bytes.decode("utf-8"))
-        except Exception as e:
-            self._send_error(HTTPStatus.BAD_REQUEST, "MalformedJSON", f"Invalid JSON payload: {str(e)}")
+        except Exception:
+            self._send_error(
+                HTTPStatus.BAD_REQUEST,
+                "MalformedJSON",
+                "Invalid JSON syntax in request payload",
+                correlation_id,
+            )
             return
 
         # 3. Route POST Endpoints
         if path == "/v1/observations":
-            self.handle_post_observation(body_json)
+            self.handle_post_observation(body_json, correlation_id)
         elif path == "/v1/evidence":
-            self.handle_post_evidence(body_json)
+            self.handle_post_evidence(body_json, correlation_id)
         elif path == "/v1/directional-specifications":
-            self.handle_post_directional_spec(body_json)
+            self.handle_post_directional_spec(body_json, correlation_id)
         elif path == "/v1/providers/register":
-            self.handle_register_provider(body_json)
+            self.handle_register_provider(body_json, correlation_id)
         else:
-            self._send_error(HTTPStatus.NOT_FOUND, "NotFound", f"Endpoint '{path}' not found.")
+            self._send_error(
+                HTTPStatus.NOT_FOUND,
+                "NotFound",
+                f"Endpoint '{path}' not found.",
+                correlation_id,
+            )
 
     def handle_health(self) -> None:
         status_info = {
             "status": "healthy",
+            "runtime_identity": "Cognitia",
             "runtime_version": "1.0.0",
             "cognitive_abi_version": "1.0.0",
             "protocol_version": "1.0.0",
@@ -142,7 +183,8 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 all_caps.append({
                     "provider_id": p["provider_id"],
                     "capability": cap,
-                    "authority_level": p.get("authority_level", "NONE"),
+                    "status": p.get("status", "PLANNED_REFERENCE"),
+                    "authority_level": "NONE",
                 })
         self._send_json(HTTPStatus.OK, {"capabilities": all_caps})
 
@@ -150,84 +192,107 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
         providers = self.provider_registry.list_providers()
         self._send_json(HTTPStatus.OK, {"providers": providers})
 
-    def handle_register_provider(self, body: dict[str, Any]) -> None:
-        provider_id = body.get("provider_id")
-        if not provider_id:
-            self._send_error(HTTPStatus.BAD_REQUEST, "InvalidProvider", "Missing provider_id")
-            return
-        
-        # Enforce authority level NONE
-        record = ProviderRecord(
-            provider_id=provider_id,
-            provider_name=body.get("provider_name", provider_id),
-            provider_version=body.get("provider_version", "1.0.0"),
-            adapter_version=body.get("adapter_version", "1.0.0"),
-            supported_abi_versions=body.get("supported_abi_versions", ["1.0.0"]),
-            capabilities=body.get("capabilities", []),
-            authority_level="NONE",  # Invariant: Never allow elevation
-            transport=body.get("transport", "local_http"),
+    def handle_register_provider(self, body: dict[str, Any], correlation_id: str) -> None:
+        # Invariant Section 6: Dynamic registration is disabled in Runtime 1.0
+        self._send_error(
+            HTTPStatus.FORBIDDEN,
+            "DynamicRegistrationDisabled",
+            "Dynamic provider registration is disabled in Cognitia Standalone Runtime 1.0. Use static provider whitelist.",
+            correlation_id,
         )
-        self.provider_registry.register_provider(record)
-        self._send_json(HTTPStatus.CREATED, {"status": "registered", "provider_id": provider_id})
 
-    def handle_post_observation(self, body: dict[str, Any]) -> None:
-        t_start = time.time()
-        correlation_id = str(uuid.uuid4())
-
-        # 1. Extract Provider ID & Capability
-        provider_id = self.headers.get("X-Cognitia-Provider-Id") or body.get("source_id") or body.get("provider_id")
-        capability = self.headers.get("X-Cognitia-Capability") or body.get("metadata", {}).get("capability", "observe.generic")
+    def _extract_and_validate_provider(
+        self, body: dict[str, Any], default_cap: str, correlation_id: str
+    ) -> tuple[str, str] | None:
+        provider_id = (
+            self.headers.get("X-Cognitia-Provider-Id")
+            or body.get("source_id")
+            or body.get("provider_id")
+        )
+        capability = (
+            self.headers.get("X-Cognitia-Capability")
+            or body.get("metadata", {}).get("capability", default_cap)
+        )
 
         if not provider_id:
-            self._send_error(HTTPStatus.UNAUTHORIZED, "UnauthorizedProvider", "Missing provider ID in headers or payload")
-            return
+            self._send_error(
+                HTTPStatus.UNAUTHORIZED,
+                "MissingProviderIdentification",
+                "Missing provider identification in X-Cognitia-Provider-Id header or payload",
+                correlation_id,
+            )
+            return None
 
-        # 2. Provider Registration & Capability Validation
         if not self.provider_registry.is_registered(provider_id):
             self._send_error(
                 HTTPStatus.FORBIDDEN,
                 "UnregisteredProvider",
-                f"Provider '{provider_id}' is not registered in Cognitia Provider Registry",
+                f"Provider '{provider_id}' is not in Cognitia static whitelist",
+                correlation_id,
             )
-            return
+            return None
 
         if not self.provider_registry.validate_capability(provider_id, capability):
             self._send_error(
                 HTTPStatus.FORBIDDEN,
                 "UnauthorizedCapability",
                 f"Provider '{provider_id}' is not authorized for capability '{capability}'",
+                correlation_id,
             )
-            return
+            return None
 
-        # 3. Rate Limit Check
         if not self.rate_limiter.check_rate_limit(provider_id):
             self._send_error(
                 HTTPStatus.TOO_MANY_REQUESTS,
                 "RateLimitExceeded",
                 f"Rate limit exceeded for provider '{provider_id}'",
+                correlation_id,
+            )
+            return None
+
+        return str(provider_id), str(capability)
+
+    def handle_post_observation(self, body: dict[str, Any], correlation_id: str) -> None:
+        t_start = time.perf_counter()
+
+        prov_info = self._extract_and_validate_provider(
+            body, default_cap="observe.generic", correlation_id=correlation_id
+        )
+        if not prov_info:
+            return
+        provider_id, capability = prov_info
+
+        # ABI Validation
+        try:
+            ABIValidator.validate_observation_dict(body)
+        except (ABIValidationError, RuntimeValidationError) as e:
+            self._send_error(
+                HTTPStatus.BAD_REQUEST, "ABIValidationError", str(e), correlation_id
             )
             return
 
-        # 4. ABI Validation
+        # Security Sanitization
         try:
-            ABIValidator.validate_observation_dict(body)
-        except ABIValidationError as e:
-            self._send_error(HTTPStatus.BAD_REQUEST, "ABIValidationError", str(e))
-            return
-
-        # 5. Security Sanitization & Isolation
-        try:
-            sanitized_payload = SecuritySanitizer.sanitize_observation_payload(body.get("payload", {}), provider_id)
+            sanitized_payload = SecuritySanitizer.sanitize_observation_payload(
+                body.get("payload", {}), provider_id
+            )
             body["payload"] = sanitized_payload
         except SecurityValidationError as e:
-            self._send_error(HTTPStatus.UNPROCESSABLE_ENTITY, "SecurityViolation", str(e))
+            self._send_error(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "SecurityViolation",
+                str(e),
+                correlation_id,
+            )
             return
 
-        # 6. Epistemic Ingestion
+        # Epistemic Ingestion
         try:
-            ingest_result = self.epistemic_bridge.ingest_observation(body, provider_id, capability)
-            duration_ms = (time.time() - t_start) * 1000.0
-            
+            ingest_result = self.epistemic_bridge.ingest_observation(
+                body, provider_id, capability
+            )
+            duration_ms = (time.perf_counter() - t_start) * 1000.0
+
             response_payload = {
                 "status": "success",
                 "correlation_id": correlation_id,
@@ -237,23 +302,113 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 "ingest_result": ingest_result,
             }
             self._send_json(HTTPStatus.OK, response_payload)
-        except Exception as e:
-            logger.exception("Error ingesting observation")
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "IngestError", f"Failed to ingest observation: {str(e)}")
+        except EpistemicCapacityExceededError as e:
+            self._send_error(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "CapacityExceeded",
+                str(e),
+                correlation_id,
+            )
+        except Exception:
+            logger.exception("Unexpected error ingesting observation")
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "IngestionError",
+                "Internal epistemic ingestion failed",
+                correlation_id,
+            )
 
-    def handle_post_evidence(self, body: dict[str, Any]) -> None:
-        self.handle_post_observation(body)
+    def handle_post_evidence(self, body: dict[str, Any], correlation_id: str) -> None:
+        t_start = time.perf_counter()
 
-    def handle_post_directional_spec(self, body: dict[str, Any]) -> None:
-        provider_id = self.headers.get("X-Cognitia-Provider-Id") or body.get("metadata", {}).get("provider_id", "anonymous")
+        prov_info = self._extract_and_validate_provider(
+            body, default_cap="observe.evidence", correlation_id=correlation_id
+        )
+        if not prov_info:
+            return
+        provider_id, capability = prov_info
+
+        # Evidence Validation
         try:
-            proposal = self.epistemic_bridge.ingest_directional_specification(body, provider_id)
-            self._send_json(HTTPStatus.OK, {
-                "status": "success",
-                "proposal": proposal,
-            })
-        except Exception as e:
-            self._send_error(HTTPStatus.BAD_REQUEST, "SpecificationError", str(e))
+            ABIValidator.validate_evidence_dict(body)
+        except (ABIValidationError, RuntimeValidationError) as e:
+            self._send_error(
+                HTTPStatus.BAD_REQUEST, "EvidenceValidationError", str(e), correlation_id
+            )
+            return
+
+        # Epistemic Ingestion
+        try:
+            ingest_result = self.epistemic_bridge.ingest_evidence(
+                body, provider_id, capability
+            )
+            duration_ms = (time.perf_counter() - t_start) * 1000.0
+
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "success",
+                    "correlation_id": correlation_id,
+                    "provider_id": provider_id,
+                    "capability": capability,
+                    "processing_duration_ms": round(duration_ms, 3),
+                    "ingest_result": ingest_result,
+                },
+            )
+        except EpistemicCapacityExceededError as e:
+            self._send_error(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "CapacityExceeded",
+                str(e),
+                correlation_id,
+            )
+        except Exception:
+            logger.exception("Unexpected error ingesting evidence")
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "IngestionError",
+                "Internal evidence ingestion failed",
+                correlation_id,
+            )
+
+    def handle_post_directional_spec(
+        self, body: dict[str, Any], correlation_id: str
+    ) -> None:
+        prov_info = self._extract_and_validate_provider(
+            body, default_cap="propose.directional", correlation_id=correlation_id
+        )
+        if not prov_info:
+            return
+        provider_id, _ = prov_info
+
+        try:
+            ABIValidator.validate_directional_spec_dict(body)
+        except (ABIValidationError, RuntimeValidationError) as e:
+            self._send_error(
+                HTTPStatus.BAD_REQUEST, "SpecificationValidationError", str(e), correlation_id
+            )
+            return
+
+        try:
+            proposal = self.epistemic_bridge.ingest_directional_specification(
+                body, provider_id
+            )
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "success",
+                    "correlation_id": correlation_id,
+                    "proposal": proposal,
+                },
+            )
+        except Exception:
+            logger.exception("Unexpected error evaluating directional specification")
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "EvaluationError",
+                "Directional specification evaluation failed",
+                correlation_id,
+            )
 
 
 def create_gateway_server(
@@ -267,7 +422,7 @@ def create_gateway_server(
 
     whitelist_path = config_dir / "provider_whitelist.json"
     registry = ProviderRegistry(whitelist_path if whitelist_path.exists() else None)
-    limiter = RateLimiter(max_requests_per_minute=1200)
+    limiter = RateLimiter(max_requests_per_minute=600)
     bridge = EpistemicBridge()
 
     # Bind handlers

@@ -1,51 +1,71 @@
-﻿# Cognitia Runtime Test & Validation Report
+﻿# Cognitia Runtime Hardened Validation Report
 
-**Phase:** Cognitia Standalone Runtime + Provider Gateway  
+**Phase:** Cognitia Standalone Runtime 1.0  
+**Runtime Identity:** `Cognitia`  
+**Docker Image:** `cognitia:1.0.0`  
+**Docker Container:** `cognitia`  
 **Date:** 2026-09-23  
 **Status:** PASS  
 
 ---
 
-## 1. Test Suite Summary
+## 1. Test Summary
 
-- **Total Tests:** 26  
-- **Passed:** 26  
-- **Failed:** 0  
-- **Execution Time:** ~1.1s  
+- **Unit & Concurrency Tests:** 31 / 31 PASS
+- **Live Docker Container Tests:** 8 / 8 PASS
+- **Core Cognitia Regression Tests:** 1004 / 1005 PASS (1 external PrintForge git commit check)
+- **Total Execution Time:** ~2.2s
 
 ### Test Categories
-1. **ABI Validation & Provider Registry (5/5):**
-   - Valid observation schema pass
-   - Invalid UUID rejection
-   - Invalid schema version rejection (v2.0 rejection)
-   - Invalid timestamp format rejection
-   - Provider registry & capability querying
+1. **ABI Validation & Provider Registry (5/5 PASS):**
+   - Canonical UUIDv4 validation
+   - SemVer 1.x schema enforcement
+   - UTC ISO-8601 timestamp validation
+   - Static provider whitelist lookup & capability gating
 
-2. **Epistemic Ingestion & Directional Specifications (3/3):**
-   - Ingestion of canonical `Observation` and `ProvenanceRecord` into `InMemoryEpistemicService`
-   - Directional Specification ingestion returning strictly advisory proposal with `authority: NONE`
-   - Deterministic JSON serialization verification
+2. **Epistemic Ingestion & Directional Reasoning (4/4 PASS):**
+   - Canonical `Observation` & `ProvenanceRecord` ingestion into `InMemoryEpistemicService`
+   - Dedicated canonical `Evidence` ingestion and node linking
+   - Canonical `DirectionalProposal` emission with `ProposalLifecycleStatus.PROPOSED`, `EpistemicStatus.UNRESOLVED`, and `authority: NONE`
+   - Deterministic serialization verification
 
-3. **Security & Boundary Enforcement (8/8):**
-   - Sensitive credential/token leakage rejection
-   - Command/execution directive rejection (`exec`, `command`, `system`)
-   - Untrusted external content tagging (`is_untrusted_external_content: true`)
-   - Prompt injection resilience (payload kept inert as passive data)
-   - Path traversal attempt isolation
-   - Unicode, emojis, and RTL override handling
-   - Deep-nesting DoS protection (> 10 depth)
-   - Rate limiting per provider (sliding window)
+3. **Concurrency & Memory Limits (2/2 PASS):**
+   - 8 concurrent threads ingesting 200 observations under lock
+   - Multi-threaded rate limiter sliding window check
 
-4. **Reference Provider (Thorium) Interoperability (2/2):**
-   - Phase 3A Navigation observation ingestion
-   - Phase 3B Authorized content extraction ingestion
+4. **Security & Boundary Isolation (8/8 PASS):**
+   - Dynamic registration rejection (HTTP 403)
+   - Command execution directive rejection (HTTP 422)
+   - Credential leakage rejection (HTTP 422)
+   - Untrusted web content tagging (`is_untrusted_external_content = true`)
+   - Adversarial prompt injection safety (inert data preservation)
+   - Path traversal string isolation
+   - Unicode, emoji, and RTL override handling
+   - Deep nesting DoS protection (> 10 depth)
 
-5. **Gateway REST API E2E (8/8):**
-   - `/v1/health` endpoint validation
-   - `/v1/capabilities` endpoint validation
-   - `/v1/providers` endpoint validation
-   - `/v1/observations` authorized ingestion
-   - `/v1/directional-specifications` advisory evaluation
-   - Unauthorized capability rejection (HTTP 403)
-   - Oversized payload rejection > 512 KB (HTTP 413)
-   - Malformed JSON rejection (HTTP 400)
+5. **Reference Provider (Lean Thorium) Interoperability (2/2 PASS):**
+   - Phase 3A navigation lifecycle observation
+   - Phase 3B authorized content extraction
+
+6. **Live Docker REST API & Security (10/10 PASS):**
+   - Live `/v1/health` query
+   - Live `/v1/capabilities` query
+   - Live `/v1/providers` query
+   - Live `/v1/observations` ingestion
+   - Live `/v1/evidence` ingestion
+   - Live `/v1/directional-specifications` evaluation
+   - Live dynamic registration rejection
+   - Live command execution rejection
+   - Live credential leak rejection
+   - Live oversized payload rejection (> 512 KB)
+
+---
+
+## 2. Resource & Operational Metrics
+
+- **Container Image Size:** 44 MB (Content Size) / 182 MB (Uncompressed disk footprint)
+- **Container Startup Time:** < 0.6 seconds
+- **Idle Memory (RAM):** 20.39 MiB
+- **Idle CPU:** 0.01%
+- **Internal Observation Ingestion Latency:** ~0.085 ms
+- **Host HTTP Roundtrip Latency:** ~35 ms

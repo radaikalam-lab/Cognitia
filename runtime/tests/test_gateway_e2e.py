@@ -65,6 +65,7 @@ class TestGatewayE2E(unittest.TestCase):
         status, data = self._get("/v1/health")
         self.assertEqual(status, 200)
         self.assertEqual(data["status"], "healthy")
+        self.assertEqual(data["runtime_identity"], "Cognitia")
         self.assertEqual(data["cognitive_abi_version"], "1.0.0")
         self.assertEqual(data["epistemic"]["status"], "available")
         self.assertEqual(data["authority_model"], "NONE")
@@ -82,6 +83,15 @@ class TestGatewayE2E(unittest.TestCase):
         provider_ids = [p["provider_id"] for p in data["providers"]]
         self.assertIn("thorium.browser", provider_ids)
         self.assertIn("acoustiforge.adapter", provider_ids)
+
+    def test_dynamic_registration_disabled(self):
+        payload = {
+            "provider_id": "malicious.hacker",
+            "capabilities": ["execute.shell"],
+        }
+        status, data = self._post("/v1/providers/register", payload)
+        self.assertEqual(status, 403)
+        self.assertEqual(data["error_type"], "DynamicRegistrationDisabled")
 
     def test_post_observation_authorized(self):
         obs = {
@@ -102,23 +112,44 @@ class TestGatewayE2E(unittest.TestCase):
         self.assertIn("correlation_id", data)
         self.assertEqual(data["ingest_result"]["status"], "ingested")
 
+    def test_post_evidence_authorized(self):
+        ev = {
+            "id": str(uuid.uuid4()),
+            "schema_version": "1.0.0",
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "target_id": "claim-001",
+            "direction": "SUPPORT",
+            "confidence": 0.9,
+            "weight": 1.0,
+            "observation_ids": [str(uuid.uuid4())],
+        }
+        headers = {
+            "X-Cognitia-Provider-Id": "thorium.browser",
+            "X-Cognitia-Capability": "observe.authorized_content",
+        }
+        status, data = self._post("/v1/evidence", ev, headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["ingest_result"]["entity_type"], "evidence")
+
     def test_post_directional_specification_advisory(self):
         spec = {
             "id": str(uuid.uuid4()),
             "schema_version": "1.0.0",
             "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "objectives": [{"description": "Assess browser memory usage gradient"}],
+            "objectives": [{"description": "Assess acoustic resonance damping"}],
             "constraints": [{"description": "Advisory only"}],
             "success_criteria": [{"description": "Residual < 10MB"}],
         }
         headers = {
-            "X-Cognitia-Provider-Id": "thorium.browser",
+            "X-Cognitia-Provider-Id": "acoustiforge.adapter",
+            "X-Cognitia-Capability": "propose.resonances",
         }
         status, data = self._post("/v1/directional-specifications", spec, headers)
         self.assertEqual(status, 200)
         self.assertEqual(data["status"], "success")
         proposal = data["proposal"]
-        self.assertEqual(proposal["status"], "advisory_candidate")
+        self.assertEqual(proposal["proposal_status"], "proposed")
         self.assertEqual(proposal["authority"], "NONE")
 
     def test_post_observation_unauthorized_capability(self):
@@ -138,7 +169,6 @@ class TestGatewayE2E(unittest.TestCase):
         self.assertEqual(data["error_type"], "UnauthorizedCapability")
 
     def test_post_oversized_payload_rejection(self):
-        # 600 KB payload (exceeds 512 KB limit)
         huge_text = "A" * (600 * 1024)
         obs = {
             "id": str(uuid.uuid4()),
