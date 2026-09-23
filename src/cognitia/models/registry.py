@@ -22,6 +22,7 @@ class ModelStatus(str, enum.Enum):
     """Lifecycle status of a registered cognitive model."""
 
     EXPERIMENTAL = "experimental"
+    CANDIDATE = "candidate"
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     RETIRED = "retired"

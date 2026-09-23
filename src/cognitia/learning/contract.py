@@ -2,12 +2,13 @@
 
 Defines the core provider abstraction, task types, inference request/result
 schemas, representation boundary, evaluation structures, drift detection contracts,
-and provenance rules for adaptive machine learning providers.
+AL1 outcome/feedback lifecycle, model candidates, and promotion proposals.
 
 Fundamental Architectural Invariants:
 1. Epistemic Novelty != Production Authority (authority is always NONE).
-2. Adaptive Learning != Epistemic Truth (output is an advisory AdaptiveLearningResult, not Evidence).
+2. Adaptive Learning != Epistemic Truth (output is an advisory AdaptiveLearningResult/Candidate, not Evidence).
 3. Frozen Epistemic Semantics (E0.5-E10) are preserved without modification.
+4. Active model immutability: Learning generates ModelCandidate proposals, never overwriting active models.
 """
 
 from __future__ import annotations
@@ -57,10 +58,21 @@ class EvaluationMetric(str, enum.Enum):
     ROC_AUC = "roc_auc"
 
 
+class CandidateStatus(str, enum.Enum):
+    """Lifecycle status of candidate model proposals."""
+
+    CANDIDATE = "candidate"
+    EVALUATED = "evaluated"
+    PROPOSED = "proposed"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    DEFERRED = "deferred"
+
+
 @dataclass(frozen=True)
 class ModelInputRepresentation(CognitiveObject):
     """Sanitized representation boundary input passed to an adaptive model.
-    
+
     Protects core Cognitia internals, ensures reproducibility, and isolates
     untrusted content.
     """
@@ -92,7 +104,7 @@ class AdaptiveInferenceRequest:
 @dataclass(frozen=True)
 class AdaptiveLearningResult(CognitiveObject):
     """Canonical result produced by an adaptive learning model inference.
-    
+
     Advisory only; authority is strictly NONE.
     """
 
@@ -118,6 +130,245 @@ class AdaptiveLearningResult(CognitiveObject):
     def __post_init__(self) -> None:
         if self.authority != "NONE":
             raise ValueError("AdaptiveLearningResult authority must strictly be 'NONE'")
+
+
+# Alias for explicit AL1 PredictionRecord semantics
+PredictionRecord = AdaptiveLearningResult
+
+
+@dataclass(frozen=True)
+class OutcomeRecord(CognitiveObject):
+    """Measured ground truth or actual state from domain/host observation.
+
+    Advisory only; authority is strictly NONE.
+    """
+
+    source_id: str = ""
+    target_prediction_id: str = ""
+    observation_id: str = ""
+    actual_values: dict[str, Any] = field(default_factory=dict)
+    is_ground_truth: bool = True
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.SENSOR,
+            is_deterministic=True,
+        )
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("OutcomeRecord authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class FeedbackRecord(CognitiveObject):
+    """Structured feedback linking a prediction to an observed outcome.
+
+    Advisory only; authority is strictly NONE.
+    """
+
+    prediction_id: str = ""
+    outcome_id: str = ""
+    model_id: str = ""
+    model_version: str = "1.0.0"
+    provider_id: str = ""
+    loss_or_error: float = 0.0
+    metrics: dict[str, float] = field(default_factory=dict)
+    feedback_type: str = "direct_outcome"
+    payload: dict[str, Any] = field(default_factory=dict)
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("FeedbackRecord authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class LearningEvent(CognitiveObject):
+    """Immutable record capturing feedback aggregation for model updates.
+
+    Advisory only; authority is strictly NONE.
+    """
+
+    event_type: str = "outcome_feedback"
+    feedback_ids: list[str] = field(default_factory=list)
+    prediction_ids: list[str] = field(default_factory=list)
+    outcome_ids: list[str] = field(default_factory=list)
+    model_id: str = ""
+    model_version: str = "1.0.0"
+    provider_id: str = ""
+    sample_count: int = 0
+    data_fingerprint: str = ""
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("LearningEvent authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class LearningUpdate(CognitiveObject):
+    """Computed parameter delta or structural update derived from learning.
+
+    Advisory only; authority is strictly NONE.
+    """
+
+    learning_event_id: str = ""
+    parent_model_id: str = ""
+    parent_model_version: str = "1.0.0"
+    candidate_model_id: str = ""
+    candidate_model_version: str = "1.1-candidate"
+    provider_id: str = ""
+    update_method: str = "delta_update"
+    parameter_deltas: dict[str, Any] = field(default_factory=dict)
+    parameter_fingerprint: str = ""
+    random_seed: int = 42
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("LearningUpdate authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class ModelCandidate(CognitiveObject):
+    """Proposed candidate model state derived from learning updates.
+
+    Never overwrites or activates in production automatically.
+    Advisory only; authority is strictly NONE.
+    """
+
+    candidate_model_id: str = ""
+    candidate_model_version: str = "1.1-candidate"
+    parent_model_id: str = ""
+    parent_model_version: str = "1.0.0"
+    provider_id: str = ""
+    provider_version: str = "1.0.0"
+    status: CandidateStatus = CandidateStatus.CANDIDATE
+    parameter_fingerprint: str = ""
+    parameters: dict[str, Any] = field(default_factory=dict)
+    creation_seed: int = 42
+    learning_event_ids: list[str] = field(default_factory=list)
+    is_deterministic: bool = True
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelCandidate authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class ModelEvaluation(CognitiveObject):
+    """Formal statistical evaluation of a model or candidate on a dataset.
+
+    Advisory only; authority is strictly NONE.
+    """
+
+    model_id: str = ""
+    model_version: str = "1.0.0"
+    provider_id: str = ""
+    dataset_id: str = ""
+    sample_count: int = 0
+    metrics: dict[str, float] = field(default_factory=dict)
+    is_deterministic: bool = True
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelEvaluation authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class ModelPromotionProposal(CognitiveObject):
+    """Advisory promotion proposal for external governance review.
+
+    Contains factual comparison data. Authority is strictly NONE.
+    Cognitia NEVER activates models autonomously.
+    """
+
+    parent_model_id: str = ""
+    parent_model_version: str = "1.0.0"
+    candidate_model_id: str = ""
+    candidate_model_version: str = "1.1-candidate"
+    provider_id: str = ""
+    dataset_id: str = ""
+    baseline_metrics: dict[str, float] = field(default_factory=dict)
+    candidate_metrics: dict[str, float] = field(default_factory=dict)
+    metric_deltas: dict[str, float] = field(default_factory=dict)
+    drift_context: dict[str, Any] = field(default_factory=dict)
+    rationale: str = ""
+    recommendation: str = "PROPOSE_CANDIDATE"
+    status: CandidateStatus = CandidateStatus.PROPOSED
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelPromotionProposal authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class PromotionDecisionRecord(CognitiveObject):
+    """Auditable record capturing an external domain authority decision.
+
+    Cognitia records the decision, but Cognitia itself has authority='NONE'.
+    """
+
+    proposal_id: str = ""
+    candidate_model_id: str = ""
+    candidate_model_version: str = ""
+    decision: str = "REJECTED"  # "ACCEPTED", "REJECTED", "DEFERRED"
+    decider_id: str = ""
+    decider_authority: str = ""
+    rationale: str = ""
+    cognitia_authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.HUMAN,
+            is_deterministic=True,
+        )
+    )
+
+    def __post_init__(self) -> None:
+        if self.cognitia_authority != "NONE":
+            raise ValueError("PromotionDecisionRecord cognitia_authority must strictly be 'NONE'")
 
 
 @dataclass(frozen=True)
@@ -186,7 +437,13 @@ class DriftReport(CognitiveObject):
 class AdaptiveLearningFailure(Exception):
     """Raised when adaptive model inference or loading fails explicitly."""
 
-    def __init__(self, message: str, model_id: str = "", provider_id: str = "", error_code: str = "INFERENCE_ERROR") -> None:
+    def __init__(
+        self,
+        message: str,
+        model_id: str = "",
+        provider_id: str = "",
+        error_code: str = "INFERENCE_ERROR",
+    ) -> None:
         super().__init__(message)
         self.model_id = model_id
         self.provider_id = provider_id
@@ -214,3 +471,17 @@ class AdaptiveLearningProvider(Protocol):
     def infer(self, request: AdaptiveInferenceRequest) -> AdaptiveLearningResult: ...
 
     def evaluate(self, model_id: str, dataset: list[dict[str, Any]]) -> dict[str, float]: ...
+
+    def learn(
+        self,
+        events: list[LearningEvent],
+        base_model: ModelRecord,
+        seed: int = 42,
+        config: dict[str, Any] | None = None,
+    ) -> tuple[ModelCandidate, LearningUpdate]: ...
+
+    def evaluate_candidate(
+        self,
+        candidate: ModelCandidate,
+        dataset: list[dict[str, Any]],
+    ) -> ModelEvaluation: ...

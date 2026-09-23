@@ -1,9 +1,9 @@
 """Representation Boundary Adapter for Adaptive Learning.
 
 Translates canonical Cognitia objects (Observation, Evidence, DirectionalSpecification,
-etc.) into sanitized, versioned ModelInputRepresentation instances.
+OutcomeRecord, FeedbackRecord, etc.) into sanitized, versioned ModelInputRepresentation instances.
 Enforces security boundaries by isolating prompt-injection, execution directives,
-and credentials.
+model-activation commands, and credentials.
 """
 
 from __future__ import annotations
@@ -14,14 +14,18 @@ from typing import Any
 from cognitia.abi.types import CognitiveObject, Observation
 from cognitia.directional.types import DirectionalSpecification
 from cognitia.epistemic.types import Evidence
-from cognitia.learning.contract import ModelInputRepresentation
-
+from cognitia.learning.contract import (
+    FeedbackRecord,
+    ModelInputRepresentation,
+    OutcomeRecord,
+)
 
 DANGEROUS_DIRECTIVE_PATTERNS = [
     re.compile(r"\b(exec|eval|os\.system|subprocess|import\s+os|import\s+sys)\b", re.IGNORECASE),
     re.compile(r"\b(rm\s+-rf|del\s+/f|powershell|cmd\.exe|/bin/sh|/bin/bash)\b", re.IGNORECASE),
     re.compile(r"\b(bearer\s+[a-zA-Z0-9_\-\.]+|ghp_[a-zA-Z0-9]+|sk-[a-zA-Z0-9]{20,})\b", re.IGNORECASE),
     re.compile(r"\b(set-cookie:|authorization:|password=|secret=)\b", re.IGNORECASE),
+    re.compile(r"\b(activate\s+model|replace\s+production\s+model|deploy\s+model\s+immediately|grant\s+permission|authorize\s+transaction)\b", re.IGNORECASE),
 ]
 
 
@@ -33,7 +37,7 @@ class RepresentationAdapter:
     @classmethod
     def sanitize_content(cls, raw: str) -> tuple[str, list[str]]:
         """Sanitize raw text payload, redacting potential execution directives or credentials.
-        
+
         Returns:
             (sanitized_text, list_of_detected_threats)
         """
@@ -74,7 +78,8 @@ class RepresentationAdapter:
                 elif isinstance(v, (list, tuple)) and all(isinstance(x, (int, float)) for x in v):
                     features[k] = [float(x) for x in v]
                 else:
-                    sanitized_payload[k] = str(v)
+                    clean_v, _ = cls.sanitize_content(str(v))
+                    sanitized_payload[k] = clean_v
         elif isinstance(obs.payload, str):
             clean_str, _ = cls.sanitize_content(obs.payload)
             raw_text = clean_str
@@ -88,6 +93,73 @@ class RepresentationAdapter:
             sanitized_text=raw_text.strip(),
             sanitized_payload=sanitized_payload,
             provenance_reference=obs.id,
+            is_trusted=False,
+        )
+
+    @classmethod
+    def adapt_outcome(
+        cls,
+        outcome: OutcomeRecord,
+        version: str = DEFAULT_VERSION,
+    ) -> ModelInputRepresentation:
+        """Convert an OutcomeRecord into a sanitized ModelInputRepresentation."""
+        features: dict[str, Any] = {}
+        sanitized_payload: dict[str, Any] = {}
+        raw_text_parts: list[str] = []
+
+        for k, v in outcome.actual_values.items():
+            if isinstance(v, (int, float)):
+                features[k] = float(v)
+            elif isinstance(v, str):
+                clean_v, _ = cls.sanitize_content(v)
+                sanitized_payload[k] = clean_v
+                raw_text_parts.append(f"{k}: {clean_v}")
+            elif isinstance(v, (list, tuple)) and all(isinstance(x, (int, float)) for x in v):
+                features[k] = [float(x) for x in v]
+            else:
+                clean_v, _ = cls.sanitize_content(str(v))
+                sanitized_payload[k] = clean_v
+
+        return ModelInputRepresentation(
+            representation_version=version,
+            input_type="outcome",
+            source_reference=f"outcome:{outcome.id}:{outcome.source_id}",
+            features=features,
+            sanitized_text="; ".join(raw_text_parts),
+            sanitized_payload=sanitized_payload,
+            provenance_reference=outcome.id,
+            is_trusted=False,
+        )
+
+    @classmethod
+    def adapt_feedback(
+        cls,
+        feedback: FeedbackRecord,
+        version: str = DEFAULT_VERSION,
+    ) -> ModelInputRepresentation:
+        """Convert a FeedbackRecord into a sanitized ModelInputRepresentation."""
+        features: dict[str, Any] = {
+            "loss_or_error": float(feedback.loss_or_error),
+        }
+        for k, v in feedback.metrics.items():
+            features[k] = float(v)
+
+        sanitized_payload: dict[str, Any] = {}
+        for k, v in feedback.payload.items():
+            if isinstance(v, str):
+                clean_v, _ = cls.sanitize_content(v)
+                sanitized_payload[k] = clean_v
+            else:
+                sanitized_payload[k] = v
+
+        return ModelInputRepresentation(
+            representation_version=version,
+            input_type="feedback",
+            source_reference=f"feedback:{feedback.id}:{feedback.prediction_id}",
+            features=features,
+            sanitized_text=f"Feedback prediction={feedback.prediction_id} outcome={feedback.outcome_id} loss={feedback.loss_or_error}",
+            sanitized_payload=sanitized_payload,
+            provenance_reference=feedback.id,
             is_trusted=False,
         )
 
@@ -177,7 +249,8 @@ class RepresentationAdapter:
             elif isinstance(v, (list, tuple)) and all(isinstance(x, (int, float)) for x in v):
                 features[k] = [float(x) for x in v]
             else:
-                sanitized_payload[k] = str(v)
+                clean_v, _ = cls.sanitize_content(str(v))
+                sanitized_payload[k] = clean_v
 
         return ModelInputRepresentation(
             representation_version=version,
