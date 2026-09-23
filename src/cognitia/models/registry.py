@@ -1,7 +1,7 @@
 """Cognitia Model Registry.
 
-Provides immutable model registration, version tracking, calibration checksums,
-and provenance preservation.
+Provides immutable model registration, version tracking, domain scoping,
+calibration checksums, and provenance preservation.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ class ModelRecord(CognitiveObject):
 
     model_id: str = ""
     model_version: str = "1.0.0"
+    domain_id: str = "default"
     provider: str = "deterministic_rules"
     capability_type: CapabilityType = CapabilityType.DECISION
     input_schema_version: str = "1.0.0"
@@ -52,50 +53,80 @@ class ModelRegistry(Protocol):
     """Protocol for model version registry and lifecycle management."""
 
     def register(self, record: ModelRecord) -> None: ...
-    def get(self, model_id: str, version: str) -> ModelRecord | None: ...
-    def list_versions(self, model_id: str) -> list[ModelRecord]: ...
-    def get_active(self, model_id: str) -> ModelRecord | None: ...
-    def set_status(self, model_id: str, version: str, status: ModelStatus) -> None: ...
+    def get(self, model_id: str, version: str, domain_id: str | None = None) -> ModelRecord | None: ...
+    def list_versions(self, model_id: str, domain_id: str | None = None) -> list[ModelRecord]: ...
+    def get_active(self, model_id: str, domain_id: str | None = None) -> ModelRecord | None: ...
+    def list_by_domain(self, domain_id: str) -> list[ModelRecord]: ...
+    def set_status(self, model_id: str, version: str, status: ModelStatus, domain_id: str = "default") -> None: ...
 
 
 class InMemoryModelRegistry:
-    """Thread-safe, immutable in-memory reference implementation of ModelRegistry."""
+    """Thread-safe, immutable in-memory reference implementation of ModelRegistry with domain scoping."""
 
     def __init__(self) -> None:
-        # Key: (model_id, version) -> ModelRecord
-        self._registry: dict[tuple[str, str], ModelRecord] = {}
+        # Key: (domain_id, model_id, version) -> ModelRecord
+        self._registry: dict[tuple[str, str, str], ModelRecord] = {}
 
     def register(self, record: ModelRecord) -> None:
-        key = (record.model_id, record.model_version)
+        key = (record.domain_id, record.model_id, record.model_version)
         if key in self._registry:
             raise ValueError(
-                f"Model '{record.model_id}' version '{record.model_version}' is already registered and immutable"
+                f"Model '{record.model_id}' version '{record.model_version}' in domain '{record.domain_id}' is already registered and immutable"
             )
         self._registry[key] = record
 
-    def get(self, model_id: str, version: str) -> ModelRecord | None:
-        return self._registry.get((model_id, version))
+    def get(self, model_id: str, version: str, domain_id: str | None = None) -> ModelRecord | None:
+        if domain_id:
+            return self._registry.get((domain_id, model_id, version))
+        for (d_id, m_id, v), record in self._registry.items():
+            if m_id == model_id and v == version:
+                return record
+        return None
 
-    def list_versions(self, model_id: str) -> list[ModelRecord]:
+    def list_versions(self, model_id: str, domain_id: str | None = None) -> list[ModelRecord]:
+        if domain_id:
+            return [
+                record
+                for (d_id, m_id, _), record in self._registry.items()
+                if d_id == domain_id and m_id == model_id
+            ]
         return [
             record
-            for (m_id, _), record in self._registry.items()
+            for (_, m_id, _), record in self._registry.items()
             if m_id == model_id
         ]
 
-    def get_active(self, model_id: str) -> ModelRecord | None:
-        for (m_id, _), record in self._registry.items():
+    def get_active(self, model_id: str, domain_id: str | None = None) -> ModelRecord | None:
+        if domain_id:
+            for (d_id, m_id, _), record in self._registry.items():
+                if d_id == domain_id and m_id == model_id and record.status == ModelStatus.ACTIVE:
+                    return record
+            return None
+        for (_, m_id, _), record in self._registry.items():
             if m_id == model_id and record.status == ModelStatus.ACTIVE:
                 return record
         return None
 
-    def set_status(self, model_id: str, version: str, status: ModelStatus) -> None:
-        key = (model_id, version)
+    def list_by_domain(self, domain_id: str) -> list[ModelRecord]:
+        return [
+            record
+            for (d_id, _, _), record in self._registry.items()
+            if d_id == domain_id
+        ]
+
+    def set_status(self, model_id: str, version: str, status: ModelStatus, domain_id: str = "default") -> None:
+        key = (domain_id, model_id, version)
         existing = self._registry.get(key)
         if not existing:
-            raise KeyError(f"Model '{model_id}' version '{version}' not found")
+            # Fallback for un-scoped lookup if domain is default
+            for (d_id, m_id, v), rec in self._registry.items():
+                if m_id == model_id and v == version:
+                    existing = rec
+                    key = (d_id, m_id, v)
+                    break
+        if not existing:
+            raise KeyError(f"Model '{model_id}' version '{version}' in domain '{domain_id}' not found")
 
-        # Create updated record preserving all other immutable metadata
         updated = ModelRecord(
             id=existing.id,
             schema_version=existing.schema_version,
@@ -103,6 +134,7 @@ class InMemoryModelRegistry:
             metadata=existing.metadata,
             model_id=existing.model_id,
             model_version=existing.model_version,
+            domain_id=existing.domain_id,
             provider=existing.provider,
             capability_type=existing.capability_type,
             input_schema_version=existing.input_schema_version,

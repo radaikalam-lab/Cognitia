@@ -32,8 +32,11 @@ from cognitia.learning.contract import (
     CandidateStatus,
     DriftReport,
     FeedbackRecord,
+    KnowledgeType,
     LearningCurvePoint,
+    LearningDomain,
     LearningEvent,
+    LearningTransferProposal,
     LearningUpdate,
     ModelCandidate,
     ModelComparisonRecord,
@@ -42,6 +45,10 @@ from cognitia.learning.contract import (
     OutcomeRecord,
     PromotionDecisionRecord,
     TaskType,
+    TransferCompatibilityResult,
+    TransferCompatibilityStatus,
+    TransferDecisionRecord,
+    TransferType,
 )
 from cognitia.learning.laya_provider import LayaProvider
 from cognitia.learning.representation import RepresentationAdapter
@@ -199,6 +206,7 @@ class EpistemicBridge:
             m_rec = ModelRecord(
                 model_id=payload.get("model_id", ""),
                 model_version=payload.get("model_version", "1.0.0"),
+                domain_id=payload.get("domain_id", "default"),
                 provider=payload.get("provider", "laya"),
                 status=ModelStatus(payload.get("status", "active")),
                 is_deterministic=payload.get("is_deterministic", True),
@@ -212,6 +220,7 @@ class EpistemicBridge:
         elif rec_type == "adaptive_learning_result":
             res = AdaptiveLearningResult(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 model_id=payload.get("model_id", ""),
                 model_version=payload.get("model_version", "1.0.0"),
                 provider_id=payload.get("provider_id", "laya"),
@@ -229,6 +238,7 @@ class EpistemicBridge:
         elif rec_type == "learning_curve_point":
             pt = LearningCurvePoint(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 model_id=payload.get("model_id", ""),
                 model_version=payload.get("model_version", "1.0.0"),
                 provider_id=payload.get("provider_id", "laya"),
@@ -253,6 +263,7 @@ class EpistemicBridge:
         elif rec_type == "drift_report":
             report = DriftReport(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 model_id=payload.get("model_id", ""),
                 drift_type=payload.get("drift_type", "prediction_drift"),
                 metric_name=payload.get("metric_name", ""),
@@ -268,6 +279,7 @@ class EpistemicBridge:
         elif rec_type == "outcome_record":
             outcome = OutcomeRecord(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 source_id=payload.get("source_id", ""),
                 target_prediction_id=payload.get("target_prediction_id", ""),
                 observation_id=payload.get("observation_id", ""),
@@ -281,6 +293,7 @@ class EpistemicBridge:
         elif rec_type == "feedback_record":
             fb = FeedbackRecord(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 prediction_id=payload.get("prediction_id", ""),
                 outcome_id=payload.get("outcome_id", ""),
                 model_id=payload.get("model_id", ""),
@@ -297,6 +310,7 @@ class EpistemicBridge:
         elif rec_type == "learning_event":
             le = LearningEvent(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 event_type=payload.get("event_type", "outcome_feedback"),
                 feedback_ids=payload.get("feedback_ids", []),
                 prediction_ids=payload.get("prediction_ids", []),
@@ -313,6 +327,7 @@ class EpistemicBridge:
         elif rec_type == "learning_update":
             lu = LearningUpdate(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 learning_event_id=payload.get("learning_event_id", ""),
                 parent_model_id=payload.get("parent_model_id", ""),
                 parent_model_version=payload.get("parent_model_version", "1.0.0"),
@@ -330,6 +345,7 @@ class EpistemicBridge:
         elif rec_type == "model_candidate":
             mc = ModelCandidate(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 candidate_model_id=payload.get("candidate_model_id", ""),
                 candidate_model_version=payload.get("candidate_model_version", "1.1-candidate"),
                 parent_model_id=payload.get("parent_model_id", ""),
@@ -349,6 +365,7 @@ class EpistemicBridge:
             cand_record = ModelRecord(
                 model_id=mc.candidate_model_id,
                 model_version=mc.candidate_model_version,
+                domain_id=mc.domain_id,
                 provider=mc.provider_id,
                 status=ModelStatus.CANDIDATE,
                 is_deterministic=mc.is_deterministic,
@@ -359,6 +376,7 @@ class EpistemicBridge:
         elif rec_type == "model_evaluation":
             me = ModelEvaluation(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 model_id=payload.get("model_id", ""),
                 model_version=payload.get("model_version", "1.0.0"),
                 provider_id=payload.get("provider_id", "laya"),
@@ -373,6 +391,7 @@ class EpistemicBridge:
         elif rec_type == "model_promotion_proposal":
             prop = ModelPromotionProposal(
                 id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
                 parent_model_id=payload.get("parent_model_id", ""),
                 parent_model_version=payload.get("parent_model_version", "1.0.0"),
                 candidate_model_id=payload.get("candidate_model_id", ""),
@@ -403,6 +422,64 @@ class EpistemicBridge:
                 cognitia_authority="NONE",
             )
             self.adaptive_learning._decisions[dec.id] = dec
+
+        elif rec_type == "learning_domain":
+            domain = LearningDomain(
+                domain_id=payload.get("domain_id", "default"),
+                domain_version=payload.get("domain_version", "1.0.0"),
+                description=payload.get("description", ""),
+                representation_version=payload.get("representation_version", "1.0.0"),
+                declared_providers=payload.get("declared_providers", payload.get("compatible_providers", ["laya"])),
+                metadata=payload.get("metadata", {}),
+            )
+            self.adaptive_learning._domains[domain.domain_id] = domain
+
+        elif rec_type == "learning_transfer_proposal":
+            tp = LearningTransferProposal(
+                id=payload.get("id", ""),
+                source_domain_id=payload.get("source_domain_id", ""),
+                target_domain_id=payload.get("target_domain_id", ""),
+                transfer_type=TransferType(payload.get("transfer_type", "model_transfer")),
+                knowledge_type=KnowledgeType(payload.get("knowledge_type", "feature_extractor")),
+                source_model_id=payload.get("source_model_id", ""),
+                source_model_version=payload.get("source_model_version", ""),
+                target_model_id=payload.get("target_model_id", ""),
+                target_base_model_version=payload.get("target_base_model_version", ""),
+                rationale=payload.get("rationale", ""),
+                transfer_payload=payload.get("transfer_payload", {}),
+                authority="NONE",
+                metadata=payload.get("metadata", {}),
+            )
+            self.adaptive_learning._transfer_proposals[tp.id] = tp
+
+        elif rec_type == "transfer_compatibility_result":
+            tcr = TransferCompatibilityResult(
+                id=payload.get("id", ""),
+                proposal_id=payload.get("proposal_id", ""),
+                source_domain_id=payload.get("source_domain_id", ""),
+                target_domain_id=payload.get("target_domain_id", ""),
+                status=TransferCompatibilityStatus(payload.get("status", "incompatible")),
+                score=float(payload.get("score", 0.0)),
+                compatibility_details=payload.get("compatibility_details", {}),
+                risks=payload.get("risks", []),
+                advisory_recommendation=payload.get("advisory_recommendation", ""),
+                authority="NONE",
+                metadata=payload.get("metadata", {}),
+            )
+            self.adaptive_learning._transfer_compatibility[tcr.id] = tcr
+
+        elif rec_type == "transfer_decision":
+            td = TransferDecisionRecord(
+                id=payload.get("id", ""),
+                proposal_id=payload.get("proposal_id", ""),
+                decision=payload.get("decision", "REJECTED"),
+                decider_id=payload.get("decider_id", ""),
+                decision_source=payload.get("decision_source", "EXTERNAL"),
+                rationale=payload.get("rationale", ""),
+                cognitia_authority="NONE",
+                metadata=payload.get("metadata", {}),
+            )
+            self.adaptive_learning._transfer_decisions[td.id] = td
 
 
     def _import_snapshot_state(self, snapshot: SnapshotData) -> None:
