@@ -1,12 +1,13 @@
 """Adaptive Learning Orchestration Service.
 
 Integrates ModelRegistry, AdaptiveLearningProvider, RepresentationAdapter,
-EvaluationEngine, DriftDetector, and FilePersistenceService into an auditable
-adaptive learning loop with ZERO production authority.
+EvaluationEngine, DriftDetector, LearningReplayEngine, and FilePersistenceService
+into an auditable outcome-driven adaptive learning loop with ZERO production authority.
 """
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from cognitia.abi.types import Observation
@@ -17,20 +18,32 @@ from cognitia.learning.contract import (
     AdaptiveLearningFailure,
     AdaptiveLearningProvider,
     AdaptiveLearningResult,
+    CandidateStatus,
     DriftReport,
+    FeedbackRecord,
     LearningCurvePoint,
+    LearningEvent,
+    LearningUpdate,
+    ModelCandidate,
     ModelComparisonRecord,
+    ModelEvaluation,
+    ModelPromotionProposal,
+    OutcomeRecord,
+    PredictionRecord,
+    PromotionDecisionRecord,
     TaskType,
 )
 from cognitia.learning.drift import DriftDetector, StatisticalDriftDetector
 from cognitia.learning.evaluation import ModelEvaluationEngine
 from cognitia.learning.laya_provider import LayaProvider
+from cognitia.learning.replay import LearningReplayEngine, ReplayVerificationResult
 from cognitia.learning.representation import RepresentationAdapter
 from cognitia.models.registry import InMemoryModelRegistry, ModelRecord, ModelRegistry, ModelStatus
+from cognitia.provenance.record import ProvenanceRecord, SourceType
 
 
 class AdaptiveLearningService:
-    """Central service coordinating models, inference, evaluation, and persistence."""
+    """Central service coordinating models, inference, outcomes, feedback, candidates, evaluation, and persistence."""
 
     def __init__(
         self,
@@ -46,6 +59,16 @@ class AdaptiveLearningService:
         self._learning_curves: list[LearningCurvePoint] = []
         self._comparisons: list[ModelComparisonRecord] = []
         self._drift_reports: list[DriftReport] = []
+
+        # AL1 Lifecycle Storage
+        self._outcomes: dict[str, OutcomeRecord] = {}
+        self._feedback: dict[str, FeedbackRecord] = {}
+        self._learning_events: dict[str, LearningEvent] = {}
+        self._learning_updates: dict[str, LearningUpdate] = {}
+        self._candidates: dict[str, ModelCandidate] = {}
+        self._evaluations: dict[str, ModelEvaluation] = {}
+        self._proposals: dict[str, ModelPromotionProposal] = {}
+        self._decisions: dict[str, PromotionDecisionRecord] = {}
 
         laya = LayaProvider()
         self.register_provider(laya)
@@ -135,20 +158,21 @@ class AdaptiveLearningService:
         representation: Any,
         parameters: dict[str, Any] | None = None,
         is_deterministic: bool = True,
+        model_version: str = "1.0.0",
     ) -> AdaptiveLearningResult:
         """Direct inference through representation boundary."""
         provider = self.get_provider(provider_id)
-        
+
         req = AdaptiveInferenceRequest(
             model_id=model_id,
-            model_version="1.0.0",
+            model_version=model_version,
             task=task,
             representation=representation,
             parameters=parameters or {},
             is_deterministic=is_deterministic,
         )
         result = provider.infer(req)
-        
+
         if result.authority != "NONE":
             raise ValueError("AdaptiveLearningResult must carry authority='NONE'")
 
@@ -178,6 +202,500 @@ class AdaptiveLearningService:
                 pass
 
         return result
+
+    # --- AL1 Outcome & Feedback Lifecycle ---
+
+    def record_outcome(self, outcome: OutcomeRecord) -> OutcomeRecord:
+        """Record domain-measured ground truth or operational outcome. Authority is strictly NONE."""
+        if outcome.authority != "NONE":
+            raise ValueError("OutcomeRecord must carry authority='NONE'")
+
+        self._outcomes[outcome.id] = outcome
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="outcome_record",
+                    record_id=outcome.id,
+                    payload={
+                        "id": outcome.id,
+                        "source_id": outcome.source_id,
+                        "target_prediction_id": outcome.target_prediction_id,
+                        "observation_id": outcome.observation_id,
+                        "actual_values": outcome.actual_values,
+                        "is_ground_truth": outcome.is_ground_truth,
+                        "authority": outcome.authority,
+                        "metadata": outcome.metadata,
+                    },
+                )
+            except Exception:
+                pass
+
+        return outcome
+
+    def record_feedback(self, feedback: FeedbackRecord) -> FeedbackRecord:
+        """Record feedback linking prediction to outcome. Authority is strictly NONE."""
+        if feedback.authority != "NONE":
+            raise ValueError("FeedbackRecord must carry authority='NONE'")
+
+        self._feedback[feedback.id] = feedback
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="feedback_record",
+                    record_id=feedback.id,
+                    payload={
+                        "id": feedback.id,
+                        "prediction_id": feedback.prediction_id,
+                        "outcome_id": feedback.outcome_id,
+                        "model_id": feedback.model_id,
+                        "model_version": feedback.model_version,
+                        "provider_id": feedback.provider_id,
+                        "loss_or_error": feedback.loss_or_error,
+                        "metrics": feedback.metrics,
+                        "feedback_type": feedback.feedback_type,
+                        "payload": feedback.payload,
+                        "authority": feedback.authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return feedback
+
+    def create_feedback_from_outcome(
+        self,
+        prediction_id: str,
+        outcome: OutcomeRecord,
+        feedback_type: str = "direct_outcome",
+        custom_metrics: dict[str, float] | None = None,
+    ) -> FeedbackRecord:
+        """Link a prediction to an observed outcome and calculate error/metrics."""
+        # Find prediction in history
+        pred_match = next((p for p in self._learning_history if p.id == prediction_id), None)
+        model_id = pred_match.model_id if pred_match else "unknown"
+        model_version = pred_match.model_version if pred_match else "1.0.0"
+        provider_id = pred_match.provider_id if pred_match else "laya"
+
+        loss = 0.0
+        metrics = custom_metrics or {}
+
+        if pred_match:
+            pred_decision = str(pred_match.output.get("decision", ""))
+            actual_label = str(outcome.actual_values.get("label", outcome.actual_values.get("expected", "")))
+            if actual_label:
+                is_match = pred_decision == actual_label
+                loss = 0.0 if is_match else 1.0
+                metrics["exact_match"] = 1.0 if is_match else 0.0
+                metrics["loss"] = loss
+
+        prov = ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            producer_id=f"feedback:{prediction_id}:{outcome.id}",
+            capability_id="learn.adaptive.feedback",
+            is_deterministic=True,
+        )
+
+        feedback = FeedbackRecord(
+            prediction_id=prediction_id,
+            outcome_id=outcome.id,
+            model_id=model_id,
+            model_version=model_version,
+            provider_id=provider_id,
+            loss_or_error=loss,
+            metrics=metrics,
+            feedback_type=feedback_type,
+            payload={"outcome_values": outcome.actual_values},
+            authority="NONE",
+            provenance=prov,
+        )
+
+        return self.record_feedback(feedback)
+
+    def learn_from_feedback(
+        self,
+        feedback_ids: list[str],
+        base_model_id: str = "laya_acoustic_v1",
+        base_model_version: str | None = None,
+        seed: int = 42,
+        config: dict[str, Any] | None = None,
+    ) -> tuple[ModelCandidate, LearningUpdate, LearningEvent]:
+        """Trigger deterministic candidate generation from feedback events without modifying active model."""
+        feedbacks = [self._feedback[fid] for fid in feedback_ids if fid in self._feedback]
+        if not feedbacks:
+            raise AdaptiveLearningFailure(
+                f"No valid feedback records found for IDs: {feedback_ids}",
+                model_id=base_model_id,
+                provider_id="laya",
+                error_code="INVALID_FEEDBACK",
+            )
+
+        active_rec = self.model_registry.get_active(base_model_id)
+        effective_base_ver = base_model_version or (active_rec.model_version if active_rec else "1.0.0")
+
+        base_record = ModelRecord(
+            model_id=base_model_id,
+            model_version=effective_base_ver,
+            provider="laya",
+            is_deterministic=True,
+        )
+
+        data_fingerprint_src = f"{seed}:" + "|".join(sorted(f.id for f in feedbacks))
+        data_fingerprint = hashlib.sha256(data_fingerprint_src.encode("utf-8")).hexdigest()
+
+        event_prov = ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            producer_id=f"learning_event:{base_model_id}:{effective_base_ver}",
+            capability_id="learn.adaptive.event",
+            is_deterministic=True,
+        )
+
+        learning_event = LearningEvent(
+            event_type="outcome_feedback",
+            feedback_ids=feedback_ids,
+            prediction_ids=[f.prediction_id for f in feedbacks],
+            outcome_ids=[f.outcome_id for f in feedbacks],
+            model_id=base_model_id,
+            model_version=effective_base_ver,
+            provider_id="laya",
+            sample_count=len(feedbacks),
+            data_fingerprint=data_fingerprint,
+            authority="NONE",
+            provenance=event_prov,
+        )
+        self._learning_events[learning_event.id] = learning_event
+
+        provider = self.get_provider("laya")
+        candidate, update = provider.learn(
+            events=[learning_event],
+            base_model=base_record,
+            seed=seed,
+            config=config,
+        )
+
+        # Store candidate and update
+        self._candidates[candidate.candidate_model_version] = candidate
+        self._candidates[candidate.id] = candidate
+        self._learning_updates[update.id] = update
+
+        # Register candidate in registry with CANDIDATE status (immutability guarantee: active model remains active)
+        cand_model_rec = ModelRecord(
+            model_id=candidate.candidate_model_id,
+            model_version=candidate.candidate_model_version,
+            provider=candidate.provider_id,
+            status=ModelStatus.CANDIDATE,
+            is_deterministic=candidate.is_deterministic,
+            calibration_checksum=candidate.parameter_fingerprint,
+        )
+        self.model_registry.register(cand_model_rec)
+
+        # Persist all 3 artifacts
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="learning_event",
+                    record_id=learning_event.id,
+                    payload={
+                        "id": learning_event.id,
+                        "event_type": learning_event.event_type,
+                        "feedback_ids": learning_event.feedback_ids,
+                        "prediction_ids": learning_event.prediction_ids,
+                        "outcome_ids": learning_event.outcome_ids,
+                        "model_id": learning_event.model_id,
+                        "model_version": learning_event.model_version,
+                        "provider_id": learning_event.provider_id,
+                        "sample_count": learning_event.sample_count,
+                        "data_fingerprint": learning_event.data_fingerprint,
+                        "authority": learning_event.authority,
+                    },
+                )
+                self.persistence_service.append_record(
+                    record_type="learning_update",
+                    record_id=update.id,
+                    payload={
+                        "id": update.id,
+                        "learning_event_id": update.learning_event_id,
+                        "parent_model_id": update.parent_model_id,
+                        "parent_model_version": update.parent_model_version,
+                        "candidate_model_id": update.candidate_model_id,
+                        "candidate_model_version": update.candidate_model_version,
+                        "provider_id": update.provider_id,
+                        "update_method": update.update_method,
+                        "parameter_deltas": update.parameter_deltas,
+                        "parameter_fingerprint": update.parameter_fingerprint,
+                        "random_seed": update.random_seed,
+                        "authority": update.authority,
+                    },
+                )
+                self.persistence_service.append_record(
+                    record_type="model_candidate",
+                    record_id=candidate.id,
+                    payload={
+                        "id": candidate.id,
+                        "candidate_model_id": candidate.candidate_model_id,
+                        "candidate_model_version": candidate.candidate_model_version,
+                        "parent_model_id": candidate.parent_model_id,
+                        "parent_model_version": candidate.parent_model_version,
+                        "provider_id": candidate.provider_id,
+                        "provider_version": candidate.provider_version,
+                        "status": candidate.status.value if hasattr(candidate.status, "value") else str(candidate.status),
+                        "parameter_fingerprint": candidate.parameter_fingerprint,
+                        "parameters": candidate.parameters,
+                        "creation_seed": candidate.creation_seed,
+                        "learning_event_ids": candidate.learning_event_ids,
+                        "is_deterministic": candidate.is_deterministic,
+                        "authority": candidate.authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return candidate, update, learning_event
+
+    def evaluate_candidate(
+        self,
+        candidate_version_or_id: str,
+        dataset: list[dict[str, Any]],
+        model_id: str = "laya_acoustic_v1",
+    ) -> ModelEvaluation:
+        """Evaluate a ModelCandidate on a validation dataset. Authority is strictly NONE."""
+        candidate = self._candidates.get(candidate_version_or_id)
+        if not candidate:
+            candidate = next((c for c in self._candidates.values() if c.candidate_model_version == candidate_version_or_id or c.id == candidate_version_or_id), None)
+
+        if not candidate:
+            raise AdaptiveLearningFailure(
+                f"Candidate '{candidate_version_or_id}' not found",
+                model_id=model_id,
+                provider_id="laya",
+                error_code="CANDIDATE_NOT_FOUND",
+            )
+
+        provider = self.get_provider(candidate.provider_id)
+        evaluation = provider.evaluate_candidate(candidate, dataset)
+        self._evaluations[evaluation.id] = evaluation
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="model_evaluation",
+                    record_id=evaluation.id,
+                    payload={
+                        "id": evaluation.id,
+                        "model_id": evaluation.model_id,
+                        "model_version": evaluation.model_version,
+                        "provider_id": evaluation.provider_id,
+                        "dataset_id": evaluation.dataset_id,
+                        "sample_count": evaluation.sample_count,
+                        "metrics": evaluation.metrics,
+                        "is_deterministic": evaluation.is_deterministic,
+                        "authority": evaluation.authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return evaluation
+
+    def create_promotion_proposal(
+        self,
+        candidate_version: str,
+        baseline_model_version: str = "1.0.0",
+        model_id: str = "laya_acoustic_v1",
+        dataset: list[dict[str, Any]] | None = None,
+        dataset_id: str = "eval_dataset_v1",
+        drift_context: dict[str, Any] | None = None,
+    ) -> ModelPromotionProposal:
+        """Create an advisory promotion proposal comparing candidate against active baseline model.
+
+        Cognitia NEVER activates or promotes models autonomously; authority is strictly NONE.
+        """
+        candidate = self._candidates.get(candidate_version)
+        if not candidate:
+            candidate = next((c for c in self._candidates.values() if c.candidate_model_version == candidate_version), None)
+
+        if not candidate:
+            raise AdaptiveLearningFailure(
+                f"Candidate '{candidate_version}' not found for promotion proposal",
+                model_id=model_id,
+                provider_id="laya",
+                error_code="CANDIDATE_NOT_FOUND",
+            )
+
+        provider = self.get_provider(candidate.provider_id)
+        proposal = ModelEvaluationEngine.evaluate_candidate_vs_baseline(
+            provider=provider,
+            candidate=candidate,
+            baseline_model_id=model_id,
+            baseline_model_version=baseline_model_version,
+            dataset=dataset or [],
+            dataset_id=dataset_id,
+            drift_context=drift_context,
+        )
+
+        self._proposals[proposal.id] = proposal
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="model_promotion_proposal",
+                    record_id=proposal.id,
+                    payload={
+                        "id": proposal.id,
+                        "parent_model_id": proposal.parent_model_id,
+                        "parent_model_version": proposal.parent_model_version,
+                        "candidate_model_id": proposal.candidate_model_id,
+                        "candidate_model_version": proposal.candidate_model_version,
+                        "provider_id": proposal.provider_id,
+                        "dataset_id": proposal.dataset_id,
+                        "baseline_metrics": proposal.baseline_metrics,
+                        "candidate_metrics": proposal.candidate_metrics,
+                        "metric_deltas": proposal.metric_deltas,
+                        "drift_context": proposal.drift_context,
+                        "rationale": proposal.rationale,
+                        "recommendation": proposal.recommendation,
+                        "status": proposal.status.value if hasattr(proposal.status, "value") else str(proposal.status),
+                        "authority": proposal.authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return proposal
+
+    def record_promotion_decision(
+        self,
+        proposal_id: str,
+        decision: str,
+        decider_id: str,
+        decider_authority: str = "domain_governance_board",
+        rationale: str = "",
+    ) -> PromotionDecisionRecord:
+        """Record an external authority governance decision regarding a candidate model proposal.
+
+        Cognitia records the audit trail, but Cognitia itself has ZERO authority to activate models.
+        """
+        proposal = self._proposals.get(proposal_id)
+        cand_id = proposal.candidate_model_id if proposal else "unknown"
+        cand_ver = proposal.candidate_model_version if proposal else "unknown"
+
+        prov = ProvenanceRecord(
+            source_type=SourceType.HUMAN,
+            producer_id=f"decision:{decider_id}:{proposal_id}",
+            capability_id="governance.decision",
+            is_deterministic=True,
+        )
+
+        decision_rec = PromotionDecisionRecord(
+            proposal_id=proposal_id,
+            candidate_model_id=cand_id,
+            candidate_model_version=cand_ver,
+            decision=decision.upper(),
+            decider_id=decider_id,
+            decider_authority=decider_authority,
+            rationale=rationale,
+            cognitia_authority="NONE",
+            provenance=prov,
+        )
+
+        self._decisions[decision_rec.id] = decision_rec
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="promotion_decision",
+                    record_id=decision_rec.id,
+                    payload={
+                        "id": decision_rec.id,
+                        "proposal_id": decision_rec.proposal_id,
+                        "candidate_model_id": decision_rec.candidate_model_id,
+                        "candidate_model_version": decision_rec.candidate_model_version,
+                        "decision": decision_rec.decision,
+                        "decider_id": decision_rec.decider_id,
+                        "decider_authority": decision_rec.decider_authority,
+                        "rationale": decision_rec.rationale,
+                        "cognitia_authority": decision_rec.cognitia_authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return decision_rec
+
+    def replay_learning(
+        self,
+        candidate_version: str,
+        model_id: str = "laya_acoustic_v1",
+        seed: int = 42,
+    ) -> ReplayVerificationResult:
+        """Replay candidate generation deterministically and verify parameter parity."""
+        candidate = self._candidates.get(candidate_version)
+        if not candidate:
+            candidate = next((c for c in self._candidates.values() if c.candidate_model_version == candidate_version), None)
+
+        if not candidate:
+            return ReplayVerificationResult(
+                candidate_model_id=model_id,
+                candidate_model_version=candidate_version,
+                is_replayable=False,
+                is_exact_match=False,
+                status="NON_REPLAYABLE",
+                reason=f"Candidate version '{candidate_version}' not found in registry",
+                authority="NONE",
+            )
+
+        events = [self._learning_events[eid] for eid in candidate.learning_event_ids if eid in self._learning_events]
+        base_record = ModelRecord(
+            model_id=candidate.parent_model_id,
+            model_version=candidate.parent_model_version,
+            provider=candidate.provider_id,
+            is_deterministic=candidate.is_deterministic,
+        )
+
+        provider = self.get_provider(candidate.provider_id)
+        return LearningReplayEngine.replay_candidate_learning(
+            provider=provider,
+            base_model=base_record,
+            candidate=candidate,
+            learning_events=events,
+            seed=candidate.creation_seed,
+        )
+
+    # --- Query Methods ---
+
+    def list_outcomes(self) -> list[OutcomeRecord]:
+        return list(self._outcomes.values())
+
+    def list_feedback(self) -> list[FeedbackRecord]:
+        return list(self._feedback.values())
+
+    def list_learning_events(self) -> list[LearningEvent]:
+        return list(self._learning_events.values())
+
+    def list_learning_updates(self) -> list[LearningUpdate]:
+        return list(self._learning_updates.values())
+
+    def list_candidates(self, model_id: str | None = None) -> list[ModelCandidate]:
+        unique = {c.candidate_model_version: c for c in self._candidates.values()}.values()
+        if model_id:
+            return [c for c in unique if c.candidate_model_id == model_id]
+        return list(unique)
+
+    def list_evaluations(self, model_id: str | None = None) -> list[ModelEvaluation]:
+        if model_id:
+            return [e for e in self._evaluations.values() if e.model_id == model_id]
+        return list(self._evaluations.values())
+
+    def list_proposals(self, model_id: str | None = None) -> list[ModelPromotionProposal]:
+        if model_id:
+            return [p for p in self._proposals.values() if p.candidate_model_id == model_id]
+        return list(self._proposals.values())
+
+    def list_decisions(self, proposal_id: str | None = None) -> list[PromotionDecisionRecord]:
+        if proposal_id:
+            return [d for d in self._decisions.values() if d.proposal_id == proposal_id]
+        return list(self._decisions.values())
 
     def record_learning_point(
         self,
