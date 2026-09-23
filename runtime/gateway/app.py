@@ -76,7 +76,9 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
         payload = {
             "error": True,
             "error_type": error_type,
+            "error_code": error_type,
             "message": message,
+            "authority": "NONE",
             "correlation_id": correlation_id or str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -152,32 +154,49 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, {"capabilities": capabilities})
 
         elif path == "/v1/learning/models":
-            models = self.epistemic_bridge.adaptive_learning.model_registry.list_versions("laya_acoustic_v1")
-            active_rec = self.epistemic_bridge.adaptive_learning.model_registry.get_active("laya_acoustic_v1")
+            from urllib.parse import parse_qs, urlparse
+            query = parse_qs(urlparse(self.path).query)
+            d_id = query.get("domain_id", ["default"])[0]
+            models = self.epistemic_bridge.adaptive_learning.model_registry.list_by_domain(d_id)
+            if not models:
+                models = self.epistemic_bridge.adaptive_learning.model_registry.list_versions("laya_acoustic_v1")
+            active_rec = self.epistemic_bridge.adaptive_learning.model_registry.get_active(domain_id=d_id)
+            model_list = [
+                {
+                    "model_id": m.model_id,
+                    "model_version": m.model_version,
+                    "domain_id": m.domain_id,
+                    "provider": m.provider,
+                    "is_deterministic": m.is_deterministic,
+                    "status": m.status.value if hasattr(m.status, "value") else str(m.status),
+                    "lifecycle_state": m.lifecycle_state.value if hasattr(m.lifecycle_state, "value") else str(m.lifecycle_state),
+                    "runtime_activation_state": m.runtime_activation_state.value if hasattr(m.runtime_activation_state, "value") else str(m.runtime_activation_state),
+                    "task_type": m.task_type,
+                    "model_role": m.model_role,
+                }
+                for m in models
+            ] or [
+                {
+                    "model_id": "laya_acoustic_v1",
+                    "model_version": "1.0.0",
+                    "domain_id": d_id,
+                    "provider": "laya",
+                    "is_deterministic": True,
+                    "status": "active",
+                    "lifecycle_state": "active",
+                    "runtime_activation_state": "not_active",
+                    "task_type": "classification",
+                    "model_role": "primary",
+                }
+            ]
             self._send_json(
                 HTTPStatus.OK,
                 {
                     "status": "operational",
                     "provider": "laya",
                     "active_model": active_rec.model_id if active_rec else "laya_acoustic_v1",
-                    "available_models": [
-                        {
-                            "model_id": m.model_id,
-                            "model_version": m.model_version,
-                            "provider": m.provider,
-                            "is_deterministic": m.is_deterministic,
-                            "status": m.status.value if hasattr(m.status, "value") else str(m.status),
-                        }
-                        for m in models
-                    ] or [
-                        {
-                            "model_id": "laya_acoustic_v1",
-                            "model_version": "1.0.0",
-                            "provider": "laya",
-                            "is_deterministic": True,
-                            "status": "active",
-                        }
-                    ],
+                    "available_models": model_list,
+                    "models": model_list,
                     "authority": "NONE",
                 },
             )
@@ -452,7 +471,166 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                     "authority": "NONE",
                 },
             )
+        elif path == "/v1/learning/lifecycle/events":
+            events = self.epistemic_bridge.adaptive_learning.list_lifecycle_events()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(events),
+                    "events": [
+                        {
+                            "id": e.id,
+                            "domain_id": e.domain_id,
+                            "event_type": e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
+                            "model_id": e.model_id,
+                            "model_version": e.model_version,
+                            "previous_state": e.previous_state.value if hasattr(e.previous_state, "value") else str(e.previous_state),
+                            "new_state": e.new_state.value if hasattr(e.new_state, "value") else str(e.new_state),
+                            "actor_id": e.actor_id,
+                            "decision_reference": e.decision_reference,
+                            "payload": e.payload,
+                            "authority": e.authority,
+                            "timestamp": e.timestamp,
+                        }
+                        for e in events
+                    ],
+                    "authority": "NONE",
+                },
+            )
             return
+
+        elif path == "/v1/learning/rollback/proposals":
+            r_props = self.epistemic_bridge.adaptive_learning.list_rollback_proposals()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(r_props),
+                    "proposals": [
+                        {
+                            "id": p.id,
+                            "domain_id": p.domain_id,
+                            "current_active_model_id": p.current_active_model_id,
+                            "current_active_model_version": p.current_active_model_version,
+                            "target_model_id": p.target_model_id,
+                            "target_model_version": p.target_model_version,
+                            "reason": p.reason,
+                            "risk_assessment": p.risk_assessment,
+                            "factual_comparison": p.factual_comparison,
+                            "authority": p.authority,
+                        }
+                        for p in r_props
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/rollback/decisions":
+            r_decs = self.epistemic_bridge.adaptive_learning.list_rollback_decisions()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(r_decs),
+                    "decisions": [
+                        {
+                            "id": d.id,
+                            "proposal_id": d.proposal_id,
+                            "domain_id": d.domain_id,
+                            "target_model_id": d.target_model_id,
+                            "target_model_version": d.target_model_version,
+                            "approved": d.approved,
+                            "decision_source": d.decision_source,
+                            "decider_id": d.decider_id,
+                            "decider_authority": d.decider_authority,
+                            "rationale": d.rationale,
+                            "cognitia_authority": d.cognitia_authority,
+                        }
+                        for d in r_decs
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif path == "/v1/learning/activations":
+            acts = self.epistemic_bridge.adaptive_learning.list_activation_observations()
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "operational",
+                    "count": len(acts),
+                    "activations": [
+                        {
+                            "id": a.id,
+                            "domain_id": a.domain_id,
+                            "model_id": a.model_id,
+                            "model_version": a.model_version,
+                            "task_type": a.task_type.value if hasattr(a.task_type, "value") else str(a.task_type),
+                            "model_role": a.model_role,
+                            "activation_type": a.activation_type,
+                            "external_actor_id": a.external_actor_id,
+                            "decision_reference_id": a.decision_reference_id,
+                            "authority": a.authority,
+                        }
+                        for a in acts
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
+        elif (path.startswith("/v1/learning/models/") and path.endswith("/lineage")) or path == "/v1/learning/models/lineage":
+            from urllib.parse import parse_qs, urlparse
+            query = parse_qs(urlparse(self.path).query)
+            if path == "/v1/learning/models/lineage":
+                m_id = query.get("model_id", ["laya_acoustic_v1"])[0]
+                m_ver = query.get("model_version", ["1.0.0"])[0]
+                d_id = query.get("domain_id", ["default"])[0]
+            else:
+                parts = path.split("/")
+                model_spec = parts[4]
+                m_id = model_spec.split(":")[0]
+                m_ver = model_spec.split(":")[1] if ":" in model_spec else query.get("model_version", ["1.0.0"])[0]
+                d_id = query.get("domain_id", ["default"])[0]
+
+            lineage = self.epistemic_bridge.adaptive_learning.reconstruct_model_lineage(
+                model_id=m_id,
+                model_version=m_ver,
+                domain_id=d_id,
+            )
+            self._send_json(HTTPStatus.OK, lineage)
+            return
+
+        elif path.startswith("/v1/learning/models/") and path.endswith("/lifecycle"):
+            parts = path.split("/")
+            model_spec = parts[4]
+            m_id = model_spec.split(":")[0]
+            m_events = self.epistemic_bridge.adaptive_learning.list_lifecycle_events(model_id=m_id)
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "model_id": m_id,
+                    "lifecycle_events": [
+                        {
+                            "id": e.id,
+                            "event_type": e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
+                            "model_version": e.model_version,
+                            "previous_state": e.previous_state.value if hasattr(e.previous_state, "value") else str(e.previous_state),
+                            "new_state": e.new_state.value if hasattr(e.new_state, "value") else str(e.new_state),
+                            "actor_id": e.actor_id,
+                            "payload": e.payload,
+                            "timestamp": e.timestamp,
+                        }
+                        for e in m_events
+                    ],
+                    "authority": "NONE",
+                },
+            )
+            return
+
         elif path == "/v1/providers":
             providers = self.provider_registry.list_providers()
             self._send_json(HTTPStatus.OK, {"providers": providers})
@@ -1018,10 +1196,208 @@ class CognitiaGatewayHandler(BaseHTTPRequestHandler):
                 self._send_error(HTTPStatus.BAD_REQUEST, "TRANSFER_DECISION_ERROR", str(exc))
             return
 
-        elif path in ("/v1/learning/transfer/activate", "/v1/transfer/activate", "/v1/learning/activate"):
+        elif path in ("/v1/learning/promotion-decision", "/v1/learning/promotion/decision"):
+            try:
+                proposal_id = body.get("proposal_id", "")
+                decision = body.get("decision", "REJECTED")
+                decider_id = body.get("decider_id", "external_reviewer")
+                decider_auth = body.get("decider_authority", "domain_governance")
+                rationale = body.get("rationale", "")
+
+                dec_rec = self.epistemic_bridge.adaptive_learning.record_promotion_decision(
+                    proposal_id=proposal_id,
+                    decision=decision,
+                    decider_id=decider_id,
+                    decider_authority=decider_auth,
+                    rationale=rationale,
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "decision_recorded",
+                        "id": dec_rec.id,
+                        "proposal_id": dec_rec.proposal_id,
+                        "decision": dec_rec.decision,
+                        "decider_id": dec_rec.decider_id,
+                        "cognitia_authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "DECISION_RECORD_ERROR", str(exc))
+            return
+
+        elif path in ("/v1/learning/rollback-proposal", "/v1/learning/rollback/proposal", "/v1/learning/rollback/propose"):
+            try:
+                target_model_id = body.get("target_model_id") or body.get("model_id", "laya_acoustic_v1")
+                target_model_ver = body.get("target_model_version") or body.get("target_version") or body.get("model_version", "1.0.0")
+                curr_active_id = body.get("current_active_model_id") or body.get("current_model_id")
+                reason = body.get("reason", "")
+                domain_id = body.get("domain_id", "default")
+                from cognitia.learning.contract import TaskType
+                task_str = body.get("task_type", "classification")
+                task_type = TaskType(task_str)
+                model_role = body.get("model_role", "primary")
+
+                prop = self.epistemic_bridge.adaptive_learning.propose_model_rollback(
+                    target_model_id=target_model_id,
+                    target_model_version=target_model_ver,
+                    current_active_model_id=curr_active_id,
+                    reason=reason,
+                    risk_assessment=body.get("risk_assessment"),
+                    factual_comparison=body.get("factual_comparison"),
+                    domain_id=domain_id,
+                    task_type=task_type,
+                    model_role=model_role,
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "rollback_proposed",
+                        "id": prop.id,
+                        "domain_id": prop.domain_id,
+                        "current_active_model_id": prop.current_active_model_id,
+                        "current_active_model_version": prop.current_active_model_version,
+                        "target_model_id": prop.target_model_id,
+                        "target_model_version": prop.target_model_version,
+                        "reason": prop.reason,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "ROLLBACK_PROPOSAL_ERROR", str(exc))
+            return
+
+        elif path in ("/v1/learning/rollback-decision", "/v1/learning/rollback/decision", "/v1/learning/rollback/record-decision"):
+            try:
+                proposal_id = body.get("proposal_id", "")
+                approved = bool(body.get("approved", False) or body.get("decision", "").upper() in ("APPROVED", "ACCEPTED"))
+                decider_id = body.get("decider_id", "external_governance")
+                rationale = body.get("rationale", "")
+                decider_auth = body.get("decider_authority", "domain_governance_board")
+
+                dec_rec = self.epistemic_bridge.adaptive_learning.record_rollback_decision(
+                    proposal_id=proposal_id,
+                    approved=approved,
+                    decider_id=decider_id,
+                    rationale=rationale,
+                    decider_authority=decider_auth,
+                    metadata=body.get("metadata"),
+                )
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "rollback_decision_recorded",
+                        "id": dec_rec.id,
+                        "proposal_id": dec_rec.proposal_id,
+                        "approved": dec_rec.approved,
+                        "decision": "APPROVED" if dec_rec.approved else "REJECTED",
+                        "decision_source": dec_rec.decision_source,
+                        "decider_id": dec_rec.decider_id,
+                        "cognitia_authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "ROLLBACK_DECISION_ERROR", str(exc))
+            return
+
+        elif path in ("/v1/learning/activation-observation", "/v1/learning/activation/observation", "/v1/learning/activations/record-observation", "/v1/learning/activations"):
+            try:
+                from cognitia.learning.contract import ModelActivationObservation, TaskType
+                domain_id = body.get("domain_id", "default")
+                model_id = body.get("model_id", "laya_acoustic_v1")
+                model_version = body.get("model_version", "1.0.0")
+                task_str = body.get("task_type", "classification")
+                task_type = TaskType(task_str)
+                model_role = body.get("model_role", "primary")
+                activation_type = body.get("activation_type", "PROMOTION")
+                external_actor_id = body.get("external_actor_id", "domain_operator")
+                decision_ref = body.get("decision_reference_id", "")
+
+                obs = ModelActivationObservation(
+                    domain_id=domain_id,
+                    model_id=model_id,
+                    model_version=model_version,
+                    task_type=task_type,
+                    model_role=model_role,
+                    activation_type=activation_type,
+                    external_actor_id=external_actor_id,
+                    decision_reference_id=decision_ref,
+                    authority="NONE",
+                )
+                recorded = self.epistemic_bridge.adaptive_learning.record_activation_observation(obs)
+                self._send_json(
+                    HTTPStatus.CREATED,
+                    {
+                        "status": "activation_observed_and_reconciled",
+                        "id": recorded.id,
+                        "domain_id": recorded.domain_id,
+                        "model_id": recorded.model_id,
+                        "model_version": recorded.model_version,
+                        "activation_type": recorded.activation_type,
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "ACTIVATION_OBSERVATION_ERROR", str(exc))
+            return
+
+        elif path in ("/v1/learning/freeze", "/v1/learning/domains/freeze") or (path.startswith("/v1/learning/domains/") and path.endswith("/freeze")):
+            try:
+                domain_id = body.get("domain_id")
+                if not domain_id and path.startswith("/v1/learning/domains/"):
+                    domain_id = path.split("/")[4]
+                domain_id = domain_id or "default"
+                from cognitia.learning.contract import DomainFreezeMode
+                mode_str = body.get("mode", "frozen").lower()
+                mode = DomainFreezeMode.OBSERVATION_ONLY if mode_str == "observation_only" else DomainFreezeMode.FROZEN
+
+                res_mode = self.epistemic_bridge.adaptive_learning.freeze_domain(domain_id, mode=mode)
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "domain_frozen",
+                        "domain_id": domain_id,
+                        "freeze_mode": res_mode.value.upper() if hasattr(res_mode, "value") else str(res_mode).upper(),
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "FREEZE_ERROR", str(exc))
+            return
+
+        elif path in ("/v1/learning/unfreeze", "/v1/learning/domains/unfreeze") or (path.startswith("/v1/learning/domains/") and path.endswith("/unfreeze")):
+            try:
+                domain_id = body.get("domain_id")
+                if not domain_id and path.startswith("/v1/learning/domains/"):
+                    domain_id = path.split("/")[4]
+                domain_id = domain_id or "default"
+
+                res_mode = self.epistemic_bridge.adaptive_learning.unfreeze_domain(domain_id)
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "domain_unfrozen",
+                        "domain_id": domain_id,
+                        "freeze_mode": res_mode.value.upper() if hasattr(res_mode, "value") else str(res_mode).upper(),
+                        "authority": "NONE",
+                    },
+                )
+            except Exception as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "UNFREEZE_ERROR", str(exc))
+            return
+
+        elif path in (
+            "/v1/learning/transfer/activate",
+            "/v1/transfer/activate",
+            "/v1/learning/activate",
+            "/v1/learning/models/activate",
+            "/v1/learning/models/promote-active",
+            "/v1/learning/models/rollback-active",
+            "/v1/models/activate",
+        ):
             self._send_error(
                 HTTPStatus.FORBIDDEN,
-                "ActivationForbidden",
+                "ACTIVATION_FORBIDDEN",
                 "Activation is an external domain authority operation and cannot be controlled or executed by Cognitia.",
                 correlation_id,
             )

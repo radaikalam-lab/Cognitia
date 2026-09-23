@@ -1,0 +1,9 @@
+# Cognitia ↔ Thorium Protocol v1 Test Matrix
+
+| Test Suite | File | Tests Covered | Pass Criteria |
+| :--- | :--- | :--- | :--- |
+| **Protocol Framing & Framing** | `test_protocol_framing.py` | `test_handshake_hello_accept`, `test_monotonic_sequencing`, `test_causal_correlation_chain`, `test_batch_observation` | Envelopes match schema; sequences increment monotonically; correlation traces preserved. |
+| **Security Boundary (S1–S16)** | `test_security_boundary.py` | `test_url_userinfo_and_query_redaction`, `test_prompt_injection_sensory_containment`, `test_incognito_explicit_policy`, `test_payload_size_budgeting`, `test_cookie_auth_header_rejection` | Userinfo stripped; 18 sensitive query keys redacted; prompt injection treated as literal string; cookies/auth headers rejected. |
+| **Authority & Governance** | `test_authority_and_governance.py` | `test_candidate_proposal_authority_is_none`, `test_external_authorization_observation`, `test_execution_result_reconciliation`, `test_no_direct_execution_path` | `authority == "NONE"`; decisions require `decision_source == "EXTERNAL"`; execution results require external observation. |
+| **Deterministic Replay** | `test_deterministic_replay.py` | `test_event_recording_and_deterministic_replay`, `test_replay_discrepancy_detection` | Replaying identical input sequence reproduces identical message IDs, timestamps, and audit traces bit-for-bit. |
+| **Negative Safety & Faults** | `test_negative_safety.py` | `test_unsupported_protocol_version_rejected`, `test_duplicate_sequence_number_rejected`, `test_sequence_gap_detected`, `test_stale_session_proposal_rejected`, `test_proposal_with_authority_rejected`, `test_queue_overflow_drop_oldest`, `test_malformed_json_rejection` | All protocol faults, sequence anomalies, and authority tampering fail closed immediately. |

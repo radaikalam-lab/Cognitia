@@ -30,6 +30,7 @@ from cognitia.provenance.record import (
 from cognitia.learning.contract import (
     AdaptiveLearningResult,
     CandidateStatus,
+    DomainFreezeMode,
     DriftReport,
     FeedbackRecord,
     KnowledgeType,
@@ -38,22 +39,34 @@ from cognitia.learning.contract import (
     LearningEvent,
     LearningTransferProposal,
     LearningUpdate,
+    LifecycleEventType,
+    ModelActivationObservation,
     ModelCandidate,
     ModelComparisonRecord,
     ModelEvaluation,
+    ModelLifecycleEvent,
+    ModelLifecycleState,
     ModelPromotionProposal,
+    ModelRollbackDecision,
+    ModelRollbackProposal,
     OutcomeRecord,
     PromotionDecisionRecord,
+    RuntimeActivationState,
     TaskType,
     TransferCompatibilityResult,
     TransferCompatibilityStatus,
     TransferDecisionRecord,
     TransferType,
 )
-from cognitia.learning.laya_provider import LayaProvider
+from cognitia.learning.laya_provider import LayaProvider, LayaSurrogateProvider
 from cognitia.learning.representation import RepresentationAdapter
 from cognitia.learning.service import AdaptiveLearningService
-from cognitia.models.registry import ModelRecord, ModelStatus
+from cognitia.models.registry import (
+    ModelLifecycleState,
+    ModelRecord,
+    ModelStatus,
+    RuntimeActivationState,
+)
 
 
 from ..persistence.persistence_contract import (
@@ -93,6 +106,21 @@ class EpistemicBridge:
         self.adaptive_learning = AdaptiveLearningService(
             persistence_service=self.persistence_service
         )
+        # Register default acoustic model for gateway operations
+        default_model = ModelRecord(
+            model_id="laya_acoustic_v1",
+            model_version="1.0.0",
+            domain_id="default",
+            provider="laya",
+            is_deterministic=True,
+            status=ModelStatus.ACTIVE,
+            lifecycle_state=ModelLifecycleState.ACTIVE,
+            runtime_activation_state=RuntimeActivationState.ACTIVE,
+            task_type="classification",
+            model_role="primary",
+        )
+        if not self.adaptive_learning.model_registry.get(default_model.model_id, default_model.model_version, default_model.domain_id):
+            self.adaptive_learning.model_registry.register(default_model)
 
         # Perform recovery if persistence provider is supplied
         if self.persistence_service is not None:
@@ -480,6 +508,81 @@ class EpistemicBridge:
                 metadata=payload.get("metadata", {}),
             )
             self.adaptive_learning._transfer_decisions[td.id] = td
+
+        elif rec_type == "model_lifecycle_event":
+            ev = ModelLifecycleEvent(
+                id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
+                event_type=LifecycleEventType(payload.get("event_type", "model_registered")),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", ""),
+                previous_state=ModelLifecycleState(payload.get("previous_state", "discovered")),
+                new_state=ModelLifecycleState(payload.get("new_state", "registered")),
+                actor_id=payload.get("actor_id", ""),
+                decision_reference=payload.get("decision_reference", ""),
+                payload=payload.get("payload", {}),
+                authority="NONE",
+                timestamp=payload.get("timestamp", ""),
+            )
+            self.adaptive_learning._lifecycle_events.append(ev)
+
+        elif rec_type == "model_rollback_proposal":
+            rp = ModelRollbackProposal(
+                id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
+                current_active_model_id=payload.get("current_active_model_id", ""),
+                current_active_model_version=payload.get("current_active_model_version", ""),
+                target_model_id=payload.get("target_model_id", ""),
+                target_model_version=payload.get("target_model_version", ""),
+                reason=payload.get("reason", ""),
+                risk_assessment=payload.get("risk_assessment", {}),
+                factual_comparison=payload.get("factual_comparison", {}),
+                authority="NONE",
+            )
+            self.adaptive_learning._rollback_proposals[rp.id] = rp
+
+        elif rec_type == "model_rollback_decision":
+            rd = ModelRollbackDecision(
+                id=payload.get("id", ""),
+                proposal_id=payload.get("proposal_id", ""),
+                domain_id=payload.get("domain_id", "default"),
+                target_model_id=payload.get("target_model_id", ""),
+                target_model_version=payload.get("target_model_version", ""),
+                approved=bool(payload.get("approved", False)),
+                decider_id=payload.get("decider_id", ""),
+                decision_source=payload.get("decision_source", "EXTERNAL"),
+                decider_authority=payload.get("decider_authority", "domain_governance_board"),
+                rationale=payload.get("rationale", ""),
+                cognitia_authority="NONE",
+            )
+            self.adaptive_learning._rollback_decisions[rd.id] = rd
+
+        elif rec_type == "model_activation_observation":
+            obs_rec = ModelActivationObservation(
+                id=payload.get("id", ""),
+                domain_id=payload.get("domain_id", "default"),
+                model_id=payload.get("model_id", ""),
+                model_version=payload.get("model_version", ""),
+                task_type=TaskType(payload.get("task_type", "classification")),
+                model_role=payload.get("model_role", "primary"),
+                activation_type=payload.get("activation_type", "PROMOTION"),
+                external_actor_id=payload.get("external_actor_id", ""),
+                decision_reference_id=payload.get("decision_reference_id", ""),
+                authority="NONE",
+            )
+            self.adaptive_learning._activation_observations.append(obs_rec)
+            # Reconcile registry active state
+            try:
+                self.adaptive_learning.model_registry.set_runtime_activation(
+                    model_id=obs_rec.model_id,
+                    version=obs_rec.model_version,
+                    activation=RuntimeActivationState.ACTIVE,
+                    domain_id=obs_rec.domain_id,
+                    task_type=obs_rec.task_type.value if hasattr(obs_rec.task_type, "value") else str(obs_rec.task_type),
+                    model_role=obs_rec.model_role,
+                )
+            except Exception:
+                pass
 
 
     def _import_snapshot_state(self, snapshot: SnapshotData) -> None:

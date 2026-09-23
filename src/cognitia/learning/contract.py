@@ -71,6 +71,56 @@ class CandidateStatus(str, enum.Enum):
     DEFERRED = "deferred"
 
 
+# --- AL3 Model Lifecycle & Governance Enums ---
+
+class ModelLifecycleState(str, enum.Enum):
+    """Explicit lifecycle states for registered cognitive models."""
+
+    DISCOVERED = "discovered"
+    REGISTERED = "registered"
+    CANDIDATE = "candidate"
+    EVALUATED = "evaluated"
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
+
+
+class RuntimeActivationState(str, enum.Enum):
+    """Separation of declared model lifecycle from host-observed runtime activation."""
+
+    NOT_ACTIVE = "not_active"
+    ACTIVE = "active"
+    UNKNOWN = "unknown"
+
+
+class DomainFreezeMode(str, enum.Enum):
+    """Domain-level governance freeze modes."""
+
+    NORMAL = "normal"
+    FROZEN = "frozen"
+    OBSERVATION_ONLY = "observation_only"
+
+
+class LifecycleEventType(str, enum.Enum):
+    """Auditable event stream types for model lifecycle transitions."""
+
+    MODEL_REGISTERED = "model_registered"
+    MODEL_EVALUATED = "model_evaluated"
+    MODEL_CANDIDATE_CREATED = "model_candidate_created"
+    PROMOTION_PROPOSED = "promotion_proposed"
+    PROMOTION_DECIDED = "promotion_decided"
+    MODEL_ACTIVATION_OBSERVED = "model_activation_observed"
+    MODEL_SUPERSEDED = "model_superseded"
+    ROLLBACK_PROPOSED = "rollback_proposed"
+    ROLLBACK_DECIDED = "rollback_decided"
+    MODEL_ROLLBACK_OBSERVED = "model_rollback_observed"
+    MODEL_ARCHIVED = "model_archived"
+    MODEL_FROZEN = "model_frozen"
+    MODEL_UNFROZEN = "model_unfrozen"
+
+
 # --- AL2 Domain & Knowledge Transfer Enums ---
 
 class TransferType(str, enum.Enum):
@@ -647,6 +697,224 @@ class DriftReport(CognitiveObject):
     def __post_init__(self) -> None:
         if self.authority != "NONE":
             raise ValueError("DriftReport authority must strictly be 'NONE'")
+
+
+# --- AL3 Model Governance & Lifecycle Data Structures ---
+
+@dataclass(frozen=True)
+class ModelPromotionDecision(CognitiveObject):
+    """Auditable record capturing an external domain authority decision on model promotion.
+
+    Cognitia records the decision with authority='NONE'. Cognitia DOES NOT activate models.
+    """
+
+    proposal_id: str = ""
+    domain_id: str = "default"
+    candidate_model_id: str = ""
+    candidate_model_version: str = ""
+    decision: str = "REJECTED"  # "ACCEPTED", "REJECTED", "DEFERRED"
+    approved: bool = False
+    decider_id: str = ""
+    decision_source: str = "EXTERNAL"  # Strictly external authority
+    decider_authority: str = "domain_governance_board"
+    rationale: str = ""
+    cognitia_authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.HUMAN,
+            is_deterministic=True,
+        )
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.cognitia_authority != "NONE":
+            raise ValueError("ModelPromotionDecision cognitia_authority must strictly be 'NONE'")
+        if self.decision_source != "EXTERNAL":
+            raise ValueError("ModelPromotionDecision decision_source must strictly be 'EXTERNAL'")
+        if self.decision.upper() == "ACCEPTED" or self.decision.upper() == "APPROVED":
+            object.__setattr__(self, "approved", True)
+
+
+@dataclass(frozen=True)
+class ModelRollbackProposal(CognitiveObject):
+    """Advisory proposal to roll back from current active model to a previous valid model.
+
+    Advisory only; authority is strictly NONE. Cognitia never activates or rolls back autonomously.
+    """
+
+    domain_id: str = "default"
+    task_type: TaskType = TaskType.CLASSIFICATION
+    model_role: str = "primary"
+    current_active_model_id: str = ""
+    current_active_model_version: str = ""
+    target_model_id: str = ""
+    target_model_version: str = ""
+    reason: str = ""
+    risk_assessment: dict[str, Any] = field(default_factory=dict)
+    factual_comparison: dict[str, Any] = field(default_factory=dict)
+    drift_context: dict[str, Any] = field(default_factory=dict)
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            producer_id="governance:rollback_proposal",
+            is_deterministic=True,
+        )
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelRollbackProposal authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class ModelRollbackDecision(CognitiveObject):
+    """Auditable record capturing an external authority decision on model rollback.
+
+    Cognitia records the decision with authority='NONE'. Cognitia DOES NOT execute the rollback.
+    """
+
+    proposal_id: str = ""
+    domain_id: str = "default"
+    current_active_model_id: str = ""
+    current_active_model_version: str = ""
+    target_model_id: str = ""
+    target_model_version: str = ""
+    approved: bool = False
+    decider_id: str = ""
+    decision_source: str = "EXTERNAL"  # Strictly external authority
+    decider_authority: str = "domain_governance_board"
+    rationale: str = ""
+    cognitia_authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.HUMAN,
+            producer_id="governance:rollback_decision",
+            is_deterministic=True,
+        )
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.cognitia_authority != "NONE":
+            raise ValueError("ModelRollbackDecision cognitia_authority must strictly be 'NONE'")
+        if self.decision_source != "EXTERNAL":
+            raise ValueError("ModelRollbackDecision decision_source must strictly be 'EXTERNAL'")
+
+
+@dataclass(frozen=True)
+class ModelActivationObservation(CognitiveObject):
+    """Observed runtime activation performed by the domain/host system.
+
+    Reconciles Cognitia's model state with actual domain deployment.
+    Authority is strictly NONE; Cognitia records what it observed.
+    """
+
+    domain_id: str = "default"
+    model_id: str = ""
+    model_version: str = ""
+    task_type: TaskType = TaskType.CLASSIFICATION
+    model_role: str = "primary"
+    activation_type: str = "PROMOTION"  # "PROMOTION" or "ROLLBACK"
+    external_actor_id: str = ""
+    decision_reference_id: str = ""
+    observed_at: str = field(default_factory=current_utc_timestamp)
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.SENSOR,
+            producer_id="host:activation_observation",
+            is_deterministic=True,
+        )
+    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelActivationObservation authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class ModelLifecycleEvent(CognitiveObject):
+    """Immutable audit trail event for model lifecycle transitions."""
+
+    domain_id: str = "default"
+    event_type: LifecycleEventType = LifecycleEventType.MODEL_REGISTERED
+    model_id: str = ""
+    model_version: str = ""
+    previous_state: ModelLifecycleState = ModelLifecycleState.DISCOVERED
+    new_state: ModelLifecycleState = ModelLifecycleState.REGISTERED
+    actor_id: str = ""
+    decision_reference: str = ""
+    payload: dict[str, Any] = field(default_factory=dict)
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            producer_id="lifecycle:event_stream",
+            is_deterministic=True,
+        )
+    )
+    timestamp: str = field(default_factory=current_utc_timestamp)
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelLifecycleEvent authority must strictly be 'NONE'")
+
+
+@dataclass(frozen=True)
+class ModelArtifactProvenance(CognitiveObject):
+    """Immutable provenance record for real model weights and configuration."""
+
+    provider_id: str = "laya"
+    provider_version: str = "1.0.0"
+    model_id: str = ""
+    model_version: str = ""
+    upstream_repository: str = ""
+    upstream_revision: str = ""
+    model_variant: str = ""
+    model_format: str = ""
+    weights_checksum: str = ""
+    tokenizer_checksum: str = ""
+    configuration_checksum: str = ""
+    license: str = ""
+    acquisition_timestamp: str = field(default_factory=current_utc_timestamp)
+    runtime: str = ""
+    execution_provider: str = ""
+    is_real_model: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ModelComparisonReport(CognitiveObject):
+    """Multi-metric factual comparison table for external governance."""
+
+    domain_id: str = "default"
+    baseline_model_id: str = ""
+    baseline_model_version: str = ""
+    candidate_model_id: str = ""
+    candidate_model_version: str = ""
+    baseline_metrics: dict[str, float] = field(default_factory=dict)
+    candidate_metrics: dict[str, float] = field(default_factory=dict)
+    metric_deltas: dict[str, float] = field(default_factory=dict)
+    sample_count: int = 0
+    drift_context: dict[str, Any] = field(default_factory=dict)
+    factual_summary: str = ""
+    authority: str = "NONE"
+    provenance: ProvenanceRecord = field(
+        default_factory=lambda: ProvenanceRecord(
+            source_type=SourceType.ML_MODEL,
+            producer_id="evaluation:comparison_report",
+            is_deterministic=True,
+        )
+    )
+    timestamp: str = field(default_factory=current_utc_timestamp)
+
+    def __post_init__(self) -> None:
+        if self.authority != "NONE":
+            raise ValueError("ModelComparisonReport authority must strictly be 'NONE'")
 
 
 class AdaptiveLearningFailure(Exception):

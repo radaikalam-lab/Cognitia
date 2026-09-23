@@ -1,9 +1,10 @@
-"""Cognitia Adaptive Learning Layer (AL1 & AL2).
+"""Cognitia Adaptive Learning Layer (AL1, AL2 & AL3).
 
 Decoupled machine learning provider subsystem providing typed-decision learning,
 outcome-based learning, feedback loops, candidate models, evaluation, promotion proposals,
 drift detection, deterministic replay, domain-scoped learning, knowledge isolation,
-and explicit advisory transfer proposals with ZERO production authority.
+explicit advisory transfer proposals, real Laya provider integration boundary,
+and complete model lifecycle governance with ZERO production authority.
 """
 
 from cognitia.learning.contract import (
@@ -12,6 +13,7 @@ from cognitia.learning.contract import (
     AdaptiveLearningProvider,
     AdaptiveLearningResult,
     CandidateStatus,
+    DomainFreezeMode,
     DriftReport,
     DriftType,
     EvaluationMetric,
@@ -22,14 +24,24 @@ from cognitia.learning.contract import (
     LearningEvent,
     LearningTransferProposal,
     LearningUpdate,
+    LifecycleEventType,
+    ModelActivationObservation,
+    ModelArtifactProvenance,
     ModelCandidate,
     ModelComparisonRecord,
+    ModelComparisonReport,
     ModelEvaluation,
     ModelInputRepresentation,
+    ModelLifecycleEvent,
+    ModelLifecycleState,
+    ModelPromotionDecision,
     ModelPromotionProposal,
+    ModelRollbackDecision,
+    ModelRollbackProposal,
     OutcomeRecord,
     PredictionRecord,
     PromotionDecisionRecord,
+    RuntimeActivationState,
     TaskType,
     TransferCompatibilityResult,
     TransferCompatibilityStatus,
@@ -38,7 +50,12 @@ from cognitia.learning.contract import (
 )
 from cognitia.learning.drift import DriftDetector, StatisticalDriftDetector
 from cognitia.learning.evaluation import ModelEvaluationEngine
-from cognitia.learning.laya_provider import LayaProvider
+from cognitia.learning.laya_provider import (
+    LayaProvider,
+    LayaProviderAdapter,
+    LayaSurrogateProvider,
+    RealLayaProvider,
+)
 from cognitia.learning.replay import LearningReplayEngine, ReplayVerificationResult
 from cognitia.learning.representation import RepresentationAdapter
 from cognitia.learning.service import AdaptiveLearningService
@@ -51,6 +68,7 @@ __all__ = [
     "AdaptiveLearningResult",
     "AdaptiveLearningService",
     "CandidateStatus",
+    "DomainFreezeMode",
     "DriftDetector",
     "DriftReport",
     "DriftType",
@@ -58,6 +76,8 @@ __all__ = [
     "FeedbackRecord",
     "KnowledgeType",
     "LayaProvider",
+    "LayaProviderAdapter",
+    "LayaSurrogateProvider",
     "LearningCurvePoint",
     "LearningDomain",
     "LearningEvent",
@@ -65,17 +85,28 @@ __all__ = [
     "LearningTransferEngine",
     "LearningTransferProposal",
     "LearningUpdate",
+    "LifecycleEventType",
+    "ModelActivationObservation",
+    "ModelArtifactProvenance",
     "ModelCandidate",
     "ModelComparisonRecord",
+    "ModelComparisonReport",
     "ModelEvaluation",
     "ModelEvaluationEngine",
     "ModelInputRepresentation",
+    "ModelLifecycleEvent",
+    "ModelLifecycleState",
+    "ModelPromotionDecision",
     "ModelPromotionProposal",
+    "ModelRollbackDecision",
+    "ModelRollbackProposal",
     "OutcomeRecord",
     "PredictionRecord",
     "PromotionDecisionRecord",
+    "RealLayaProvider",
     "ReplayVerificationResult",
     "RepresentationAdapter",
+    "RuntimeActivationState",
     "StatisticalDriftDetector",
     "TaskType",
     "TransferCompatibilityResult",

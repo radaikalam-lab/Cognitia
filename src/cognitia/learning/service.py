@@ -20,6 +20,7 @@ from cognitia.learning.contract import (
     AdaptiveLearningProvider,
     AdaptiveLearningResult,
     CandidateStatus,
+    DomainFreezeMode,
     DriftReport,
     FeedbackRecord,
     KnowledgeType,
@@ -28,13 +29,23 @@ from cognitia.learning.contract import (
     LearningEvent,
     LearningTransferProposal,
     LearningUpdate,
+    LifecycleEventType,
+    ModelActivationObservation,
+    ModelArtifactProvenance,
     ModelCandidate,
     ModelComparisonRecord,
+    ModelComparisonReport,
     ModelEvaluation,
+    ModelLifecycleEvent,
+    ModelLifecycleState,
+    ModelPromotionDecision,
     ModelPromotionProposal,
+    ModelRollbackDecision,
+    ModelRollbackProposal,
     OutcomeRecord,
     PredictionRecord,
     PromotionDecisionRecord,
+    RuntimeActivationState,
     TaskType,
     TransferCompatibilityResult,
     TransferDecisionRecord,
@@ -42,16 +53,23 @@ from cognitia.learning.contract import (
 )
 from cognitia.learning.drift import DriftDetector, StatisticalDriftDetector
 from cognitia.learning.evaluation import ModelEvaluationEngine
-from cognitia.learning.laya_provider import LayaProvider
+from cognitia.learning.laya_provider import LayaProvider, LayaSurrogateProvider, RealLayaProvider
 from cognitia.learning.replay import LearningReplayEngine, ReplayVerificationResult
 from cognitia.learning.representation import RepresentationAdapter
 from cognitia.learning.transfer import LearningTransferEngine
-from cognitia.models.registry import InMemoryModelRegistry, ModelRecord, ModelRegistry, ModelStatus
+from cognitia.models.registry import (
+    InMemoryModelRegistry,
+    ModelLifecycleState,
+    ModelRecord,
+    ModelRegistry,
+    ModelStatus,
+    RuntimeActivationState,
+)
 from cognitia.provenance.record import ProvenanceRecord, SourceType
 
 
 class AdaptiveLearningService:
-    """Central service coordinating domains, models, inference, outcomes, feedback, candidates, evaluation, transfer, and persistence."""
+    """Central service coordinating domains, models, inference, outcomes, feedback, candidates, evaluation, transfer, lifecycle governance, and persistence."""
 
     def __init__(
         self,
@@ -84,9 +102,16 @@ class AdaptiveLearningService:
         self._transfer_compatibility: dict[str, TransferCompatibilityResult] = {}
         self._transfer_decisions: dict[str, TransferDecisionRecord] = {}
 
-        # Register default provider
-        laya = LayaProvider()
-        self.register_provider(laya)
+        # AL3 Lifecycle, Governance, Freeze, & Rollback Storage
+        self._domain_freeze_modes: dict[str, DomainFreezeMode] = {}
+        self._lifecycle_events: list[ModelLifecycleEvent] = []
+        self._rollback_proposals: dict[str, ModelRollbackProposal] = {}
+        self._rollback_decisions: dict[str, ModelRollbackDecision] = {}
+        self._activation_observations: list[ModelActivationObservation] = []
+
+        # Register default surrogate provider
+        laya_surrogate = LayaSurrogateProvider()
+        self.register_provider(laya_surrogate)
 
         # Register default legacy domain for AL1 backwards compatibility
         self.register_domain(
@@ -140,6 +165,37 @@ class AdaptiveLearningService:
 
     def list_domains(self) -> list[LearningDomain]:
         return list(self._domains.values())
+
+    # --- AL3 Domain Freeze Management ---
+
+    def get_domain_freeze_mode(self, domain_id: str = "default") -> DomainFreezeMode:
+        """Get current governance freeze mode for a domain (NORMAL, FROZEN, OBSERVATION_ONLY)."""
+        return self._domain_freeze_modes.get(domain_id, DomainFreezeMode.NORMAL)
+
+    def freeze_domain(self, domain_id: str, mode: DomainFreezeMode = DomainFreezeMode.FROZEN) -> DomainFreezeMode:
+        """Set freeze mode for a domain. Persists freeze event in audit stream."""
+        self.get_domain(domain_id)
+        prev_mode = self.get_domain_freeze_mode(domain_id)
+        self._domain_freeze_modes[domain_id] = mode
+
+        event = ModelLifecycleEvent(
+            domain_id=domain_id,
+            event_type=LifecycleEventType.MODEL_FROZEN if mode != DomainFreezeMode.NORMAL else LifecycleEventType.MODEL_UNFROZEN,
+            payload={"previous_mode": prev_mode.value, "new_mode": mode.value},
+            authority="NONE",
+            provenance=ProvenanceRecord(
+                source_type=SourceType.HUMAN,
+                producer_id=f"freeze:{domain_id}",
+                capability_id="governance.freeze",
+                is_deterministic=True,
+            ),
+        )
+        self.record_lifecycle_event(event)
+        return mode
+
+    def unfreeze_domain(self, domain_id: str) -> DomainFreezeMode:
+        """Unfreeze a domain back to NORMAL operation."""
+        return self.freeze_domain(domain_id, mode=DomainFreezeMode.NORMAL)
 
     # --- Provider Management ---
 
@@ -439,6 +495,15 @@ class AdaptiveLearningService:
         """Trigger deterministic candidate generation from feedback events within a domain scope."""
         self.get_domain(domain_id)
 
+        # AL3 Domain freeze check: OBSERVATION_ONLY blocks candidate generation
+        mode = self.get_domain_freeze_mode(domain_id)
+        if mode == DomainFreezeMode.OBSERVATION_ONLY:
+            raise AdaptiveLearningFailure(
+                f"Domain '{domain_id}' is in OBSERVATION_ONLY freeze mode; candidate generation and learning updates are disabled",
+                domain_id=domain_id,
+                error_code="DOMAIN_OBSERVATION_ONLY",
+            )
+
         feedbacks = [self._feedback[fid] for fid in feedback_ids if fid in self._feedback]
         if not feedbacks:
             raise AdaptiveLearningFailure(
@@ -523,10 +588,28 @@ class AdaptiveLearningService:
             domain_id=domain_id,
             provider=candidate.provider_id,
             status=ModelStatus.CANDIDATE,
+            lifecycle_state=ModelLifecycleState.CANDIDATE,
             is_deterministic=candidate.is_deterministic,
             calibration_checksum=candidate.parameter_fingerprint,
         )
         self.model_registry.register(cand_model_rec)
+
+        # Emit AL3 lifecycle event
+        cand_event = ModelLifecycleEvent(
+            domain_id=domain_id,
+            event_type=LifecycleEventType.MODEL_CANDIDATE_CREATED,
+            model_id=candidate.candidate_model_id,
+            model_version=candidate.candidate_model_version,
+            previous_state=ModelLifecycleState.REGISTERED,
+            new_state=ModelLifecycleState.CANDIDATE,
+            payload={
+                "parent_version": candidate.parent_model_version,
+                "learning_event_id": learning_event.id,
+                "parameter_fingerprint": candidate.parameter_fingerprint,
+            },
+            authority="NONE",
+        )
+        self.record_lifecycle_event(cand_event)
 
         # Persist all 3 artifacts
         if self.persistence_service and hasattr(self.persistence_service, "append_record"):
@@ -697,6 +780,24 @@ class AdaptiveLearningService:
 
         self._proposals[proposal.id] = proposal
 
+        # Emit PROMOTION_PROPOSED lifecycle event
+        prop_event = ModelLifecycleEvent(
+            domain_id=domain_id,
+            event_type=LifecycleEventType.PROMOTION_PROPOSED,
+            model_id=proposal.candidate_model_id,
+            model_version=proposal.candidate_model_version,
+            previous_state=ModelLifecycleState.EVALUATED,
+            new_state=ModelLifecycleState.PROPOSED,
+            payload={
+                "proposal_id": proposal.id,
+                "parent_version": proposal.parent_model_version,
+                "recommendation": proposal.recommendation,
+                "metric_deltas": proposal.metric_deltas,
+            },
+            authority="NONE",
+        )
+        self.record_lifecycle_event(prop_event)
+
         if self.persistence_service and hasattr(self.persistence_service, "append_record"):
             try:
                 self.persistence_service.append_record(
@@ -736,11 +837,14 @@ class AdaptiveLearningService:
     ) -> PromotionDecisionRecord:
         """Record an external authority governance decision regarding a candidate model proposal.
 
-        Cognitia records the audit trail, but Cognitia itself has ZERO authority to activate models.
+        CRITICAL ARCHITECTURAL GUARANTEE:
+        Cognitia records the audit trail and updates candidate state to APPROVED if accepted.
+        Cognitia itself has ZERO authority to activate models. Activation MUST be performed by the host domain.
         """
         proposal = self._proposals.get(proposal_id)
         cand_id = proposal.candidate_model_id if proposal else "unknown"
         cand_ver = proposal.candidate_model_version if proposal else "unknown"
+        domain_id = proposal.domain_id if proposal else "default"
 
         prov = ProvenanceRecord(
             source_type=SourceType.HUMAN,
@@ -749,11 +853,14 @@ class AdaptiveLearningService:
             is_deterministic=True,
         )
 
+        dec_upper = decision.upper()
+        is_approved = dec_upper in ("ACCEPTED", "APPROVED")
+
         decision_rec = PromotionDecisionRecord(
             proposal_id=proposal_id,
             candidate_model_id=cand_id,
             candidate_model_version=cand_ver,
-            decision=decision.upper(),
+            decision=dec_upper,
             decider_id=decider_id,
             decider_authority=decider_authority,
             rationale=rationale,
@@ -762,6 +869,41 @@ class AdaptiveLearningService:
         )
 
         self._decisions[decision_rec.id] = decision_rec
+
+        # Update candidate state in candidate storage and registry if approved
+        if is_approved and cand_id and cand_ver:
+            try:
+                cand_rec = self.model_registry.get(cand_id, cand_ver, domain_id=domain_id)
+                if cand_rec:
+                    self.model_registry.set_lifecycle_state(
+                        cand_id,
+                        cand_ver,
+                        ModelLifecycleState.APPROVED,
+                        domain_id=domain_id,
+                    )
+            except Exception:
+                pass
+
+        # Emit PROMOTION_DECIDED lifecycle event
+        dec_event = ModelLifecycleEvent(
+            domain_id=domain_id,
+            event_type=LifecycleEventType.PROMOTION_DECIDED,
+            model_id=cand_id,
+            model_version=cand_ver,
+            previous_state=ModelLifecycleState.PROPOSED,
+            new_state=ModelLifecycleState.APPROVED if is_approved else ModelLifecycleState.CANDIDATE,
+            actor_id=decider_id,
+            decision_reference=proposal_id,
+            payload={
+                "decision": dec_upper,
+                "approved": is_approved,
+                "decider_id": decider_id,
+                "decider_authority": decider_authority,
+                "rationale": rationale,
+            },
+            authority="NONE",
+        )
+        self.record_lifecycle_event(dec_event)
 
         if self.persistence_service and hasattr(self.persistence_service, "append_record"):
             try:
@@ -1362,3 +1504,528 @@ class AdaptiveLearningService:
         if model_id:
             results = [r for r in results if r.model_id == model_id]
         return results
+
+    # --- AL3 Lifecycle Audit Stream ---
+
+    def record_lifecycle_event(self, event: ModelLifecycleEvent) -> ModelLifecycleEvent:
+        """Record an immutable model lifecycle audit trail event and persist it."""
+        if event.authority != "NONE":
+            raise ValueError("ModelLifecycleEvent authority must strictly be 'NONE'")
+
+        self._lifecycle_events.append(event)
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="model_lifecycle_event",
+                    record_id=event.id,
+                    payload={
+                        "id": event.id,
+                        "domain_id": event.domain_id,
+                        "event_type": event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type),
+                        "model_id": event.model_id,
+                        "model_version": event.model_version,
+                        "previous_state": event.previous_state.value if hasattr(event.previous_state, "value") else str(event.previous_state),
+                        "new_state": event.new_state.value if hasattr(event.new_state, "value") else str(event.new_state),
+                        "actor_id": event.actor_id,
+                        "decision_reference": event.decision_reference,
+                        "payload": event.payload,
+                        "authority": event.authority,
+                        "timestamp": event.timestamp,
+                    },
+                )
+            except Exception:
+                pass
+
+        return event
+
+    def list_lifecycle_events(
+        self,
+        domain_id: str | None = None,
+        model_id: str | None = None,
+    ) -> list[ModelLifecycleEvent]:
+        """List persisted model lifecycle events filtered by domain or model."""
+        results = list(self._lifecycle_events)
+        if domain_id:
+            results = [e for e in results if e.domain_id == domain_id]
+        if model_id:
+            results = [e for e in results if e.model_id == model_id]
+        return results
+
+    # --- AL3 Model Rollback Governance ---
+
+    def propose_model_rollback(
+        self,
+        target_model_id: str,
+        target_model_version: str,
+        current_active_model_id: str | None = None,
+        reason: str = "",
+        risk_assessment: dict[str, Any] | None = None,
+        factual_comparison: dict[str, Any] | None = None,
+        drift_context: dict[str, Any] | None = None,
+        domain_id: str = "default",
+        task_type: TaskType = TaskType.CLASSIFICATION,
+        model_role: str = "primary",
+    ) -> ModelRollbackProposal:
+        """Create an advisory rollback proposal to return to a previous valid model version.
+
+        CRITICAL ARCHITECTURAL GUARANTEE:
+        Authority is strictly NONE. Cognitia NEVER executes rollbacks autonomously.
+        """
+        self.get_domain(domain_id)
+
+        # Look up current active model in the scope
+        active_rec = self.model_registry.get_active(
+            model_id=current_active_model_id,
+            domain_id=domain_id,
+            task_type=task_type.value if hasattr(task_type, "value") else str(task_type),
+            model_role=model_role,
+        )
+
+        curr_id = active_rec.model_id if active_rec else (current_active_model_id or "unknown")
+        curr_ver = active_rec.model_version if active_rec else "unknown"
+
+        # Verify target model exists in registry
+        target_rec = self.model_registry.get(target_model_id, target_model_version, domain_id=domain_id)
+        if not target_rec:
+            raise AdaptiveLearningFailure(
+                f"Target rollback model '{target_model_id}' version '{target_model_version}' not found in domain '{domain_id}'",
+                model_id=target_model_id,
+                domain_id=domain_id,
+                error_code="MODEL_NOT_FOUND",
+            )
+
+        proposal = ModelRollbackProposal(
+            domain_id=domain_id,
+            task_type=task_type,
+            model_role=model_role,
+            current_active_model_id=curr_id,
+            current_active_model_version=curr_ver,
+            target_model_id=target_model_id,
+            target_model_version=target_model_version,
+            reason=reason or f"Rollback requested from {curr_id}:{curr_ver} to {target_model_id}:{target_model_version}",
+            risk_assessment=risk_assessment or {"risk_level": "LOW", "regression_risk": "CONTROLLED"},
+            factual_comparison=factual_comparison or {},
+            drift_context=drift_context or {},
+            authority="NONE",
+            provenance=ProvenanceRecord(
+                source_type=SourceType.ML_MODEL,
+                producer_id=f"rollback_proposal:{domain_id}:{target_model_id}",
+                capability_id="governance.rollback",
+                is_deterministic=True,
+            ),
+        )
+
+        self._rollback_proposals[proposal.id] = proposal
+
+        # Emit ROLLBACK_PROPOSED lifecycle event
+        event = ModelLifecycleEvent(
+            domain_id=domain_id,
+            event_type=LifecycleEventType.ROLLBACK_PROPOSED,
+            model_id=target_model_id,
+            model_version=target_model_version,
+            payload={
+                "proposal_id": proposal.id,
+                "current_active_id": curr_id,
+                "current_active_version": curr_ver,
+                "target_id": target_model_id,
+                "target_version": target_model_version,
+                "reason": proposal.reason,
+            },
+            authority="NONE",
+        )
+        self.record_lifecycle_event(event)
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="model_rollback_proposal",
+                    record_id=proposal.id,
+                    payload={
+                        "id": proposal.id,
+                        "domain_id": proposal.domain_id,
+                        "current_active_model_id": proposal.current_active_model_id,
+                        "current_active_model_version": proposal.current_active_model_version,
+                        "target_model_id": proposal.target_model_id,
+                        "target_model_version": proposal.target_model_version,
+                        "reason": proposal.reason,
+                        "risk_assessment": proposal.risk_assessment,
+                        "factual_comparison": proposal.factual_comparison,
+                        "authority": proposal.authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return proposal
+
+    def record_rollback_decision(
+        self,
+        proposal_id: str,
+        approved: bool,
+        decider_id: str,
+        rationale: str = "",
+        decider_authority: str = "domain_governance_board",
+        metadata: dict[str, Any] | None = None,
+    ) -> ModelRollbackDecision:
+        """Record an external authority governance decision regarding a rollback proposal.
+
+        CRITICAL ARCHITECTURAL GUARANTEE:
+        Cognitia records the audit trail; Cognitia DOES NOT execute the rollback.
+        Rollback execution must occur on the host/domain, and then be observed via record_activation_observation.
+        """
+        proposal = self._rollback_proposals.get(proposal_id)
+        domain_id = proposal.domain_id if proposal else "default"
+        target_id = proposal.target_model_id if proposal else "unknown"
+        target_ver = proposal.target_model_version if proposal else "unknown"
+        curr_id = proposal.current_active_model_id if proposal else "unknown"
+        curr_ver = proposal.current_active_model_version if proposal else "unknown"
+
+        decision_rec = ModelRollbackDecision(
+            proposal_id=proposal_id,
+            domain_id=domain_id,
+            current_active_model_id=curr_id,
+            current_active_model_version=curr_ver,
+            target_model_id=target_id,
+            target_model_version=target_ver,
+            approved=approved,
+            decider_id=decider_id,
+            decision_source="EXTERNAL",
+            decider_authority=decider_authority,
+            rationale=rationale,
+            cognitia_authority="NONE",
+            provenance=ProvenanceRecord(
+                source_type=SourceType.HUMAN,
+                producer_id=f"rollback_decision:{decider_id}:{proposal_id}",
+                capability_id="governance.rollback_decision",
+                is_deterministic=True,
+            ),
+            metadata=metadata or {},
+        )
+
+        self._rollback_decisions[decision_rec.id] = decision_rec
+
+        # Emit ROLLBACK_DECIDED lifecycle event
+        event = ModelLifecycleEvent(
+            domain_id=domain_id,
+            event_type=LifecycleEventType.ROLLBACK_DECIDED,
+            model_id=target_id,
+            model_version=target_ver,
+            actor_id=decider_id,
+            decision_reference=proposal_id,
+            payload={
+                "approved": approved,
+                "decider_id": decider_id,
+                "decider_authority": decider_authority,
+                "rationale": rationale,
+            },
+            authority="NONE",
+        )
+        self.record_lifecycle_event(event)
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="model_rollback_decision",
+                    record_id=decision_rec.id,
+                    payload={
+                        "id": decision_rec.id,
+                        "proposal_id": decision_rec.proposal_id,
+                        "domain_id": decision_rec.domain_id,
+                        "target_model_id": decision_rec.target_model_id,
+                        "target_model_version": decision_rec.target_model_version,
+                        "approved": decision_rec.approved,
+                        "decision_source": decision_rec.decision_source,
+                        "decider_id": decision_rec.decider_id,
+                        "decider_authority": decision_rec.decider_authority,
+                        "rationale": decision_rec.rationale,
+                        "cognitia_authority": decision_rec.cognitia_authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return decision_rec
+
+    def list_rollback_proposals(self, domain_id: str | None = None) -> list[ModelRollbackProposal]:
+        results = list(self._rollback_proposals.values())
+        if domain_id:
+            results = [p for p in results if p.domain_id == domain_id]
+        return results
+
+    def list_rollback_decisions(self, proposal_id: str | None = None) -> list[ModelRollbackDecision]:
+        if proposal_id:
+            return [d for d in self._rollback_decisions.values() if d.proposal_id == proposal_id]
+        return list(self._rollback_decisions.values())
+
+    # --- AL3 Host/Domain Activation Observation & Reconciliation ---
+
+    def record_activation_observation(
+        self,
+        observation: ModelActivationObservation,
+    ) -> ModelActivationObservation:
+        """Record an observed runtime activation from the host domain system.
+
+        CRITICAL ARCHITECTURAL CONTRACT:
+        1. Cognitia does not autonomously activate production models.
+        2. When an external domain activates a model, Cognitia observes and reconciles its registry state.
+        3. Prior active model in scope (domain_id, task_type, model_role) is transitioned to SUPERSEDED.
+        4. Historical models are NEVER deleted.
+        """
+        self.get_domain(observation.domain_id)
+        if observation.authority != "NONE":
+            raise ValueError("ModelActivationObservation authority must strictly be 'NONE'")
+
+        task_str = observation.task_type.value if hasattr(observation.task_type, "value") else str(observation.task_type)
+        role_str = observation.model_role
+
+        # Find prior active model in same scope before activating
+        prior_active = self.model_registry.get_active(
+            domain_id=observation.domain_id,
+            task_type=task_str,
+            model_role=role_str,
+        )
+
+        # Reconcile registry: activate target model in registry
+        self.model_registry.set_runtime_activation(
+            model_id=observation.model_id,
+            version=observation.model_version,
+            activation=RuntimeActivationState.ACTIVE,
+            domain_id=observation.domain_id,
+            task_type=task_str,
+            model_role=role_str,
+        )
+
+        self._activation_observations.append(observation)
+
+        # Emit MODEL_ACTIVATION_OBSERVED or MODEL_ROLLBACK_OBSERVED
+        ev_type = (
+            LifecycleEventType.MODEL_ROLLBACK_OBSERVED
+            if observation.activation_type == "ROLLBACK"
+            else LifecycleEventType.MODEL_ACTIVATION_OBSERVED
+        )
+
+        obs_event = ModelLifecycleEvent(
+            domain_id=observation.domain_id,
+            event_type=ev_type,
+            model_id=observation.model_id,
+            model_version=observation.model_version,
+            previous_state=ModelLifecycleState.SUPERSEDED if observation.activation_type == "ROLLBACK" else ModelLifecycleState.APPROVED,
+            new_state=ModelLifecycleState.ACTIVE,
+            actor_id=observation.external_actor_id,
+            decision_reference=observation.decision_reference_id,
+            payload={
+                "activation_type": observation.activation_type,
+                "external_actor_id": observation.external_actor_id,
+                "task_type": task_str,
+                "model_role": role_str,
+                "prior_active_id": prior_active.model_id if prior_active else None,
+                "prior_active_version": prior_active.model_version if prior_active else None,
+            },
+            authority="NONE",
+        )
+        self.record_lifecycle_event(obs_event)
+
+        # If prior active existed, emit MODEL_SUPERSEDED
+        if prior_active and (prior_active.model_id != observation.model_id or prior_active.model_version != observation.model_version):
+            sup_event = ModelLifecycleEvent(
+                domain_id=observation.domain_id,
+                event_type=LifecycleEventType.MODEL_SUPERSEDED,
+                model_id=prior_active.model_id,
+                model_version=prior_active.model_version,
+                previous_state=ModelLifecycleState.ACTIVE,
+                new_state=ModelLifecycleState.SUPERSEDED,
+                actor_id=observation.external_actor_id,
+                decision_reference=observation.decision_reference_id,
+                payload={
+                    "superseded_by_id": observation.model_id,
+                    "superseded_by_version": observation.model_version,
+                },
+                authority="NONE",
+            )
+            self.record_lifecycle_event(sup_event)
+
+        if self.persistence_service and hasattr(self.persistence_service, "append_record"):
+            try:
+                self.persistence_service.append_record(
+                    record_type="model_activation_observation",
+                    record_id=observation.id,
+                    payload={
+                        "id": observation.id,
+                        "domain_id": observation.domain_id,
+                        "model_id": observation.model_id,
+                        "model_version": observation.model_version,
+                        "task_type": task_str,
+                        "model_role": role_str,
+                        "activation_type": observation.activation_type,
+                        "external_actor_id": observation.external_actor_id,
+                        "decision_reference_id": observation.decision_reference_id,
+                        "authority": observation.authority,
+                    },
+                )
+            except Exception:
+                pass
+
+        return observation
+
+    def list_activation_observations(self, domain_id: str | None = None) -> list[ModelActivationObservation]:
+        results = list(self._activation_observations)
+        if domain_id:
+            results = [o for o in results if o.domain_id == domain_id]
+        return results
+
+    # --- AL3 Full Lineage Reconstruction ---
+
+    def reconstruct_model_lineage(
+        self,
+        model_id: str,
+        model_version: str,
+        domain_id: str = "default",
+    ) -> dict[str, Any]:
+        """Reconstruct the complete backward lineage and provenance chain for any model.
+
+        Chain:
+        Observed Active Model
+          -> Parent Model
+          -> Candidate Model
+          -> Learning Events
+          -> Feedback Records
+          -> Outcome Records
+          -> Model Evaluation
+          -> Promotion Proposal
+          -> External Promotion Decision
+          -> Activation Observation
+          -> (If transferred: source domain, transfer proposal, compatibility, transfer decision)
+        """
+        self.get_domain(domain_id)
+        model_rec = self.model_registry.get(model_id, model_version, domain_id=domain_id)
+
+        candidate = (
+            self._candidates.get(f"{domain_id}:{model_version}")
+            or self._candidates.get(model_version)
+            or next((c for c in self._candidates.values() if c.candidate_model_id == model_id and c.candidate_model_version == model_version and c.domain_id == domain_id), None)
+        )
+
+        parent_version = candidate.parent_model_version if candidate else "1.0.0"
+        parent_id = candidate.parent_model_id if candidate else model_id
+
+        parent_rec = self.model_registry.get(parent_id, parent_version, domain_id=domain_id)
+
+        learning_event_ids = candidate.learning_event_ids if candidate else []
+        learning_events = [self._learning_events[eid] for eid in learning_event_ids if eid in self._learning_events]
+
+        feedback_ids = []
+        for le in learning_events:
+            feedback_ids.extend(le.feedback_ids)
+        feedback_records = [self._feedback[fid] for fid in feedback_ids if fid in self._feedback]
+
+        outcome_ids = [f.outcome_id for f in feedback_records if f.outcome_id]
+        outcome_records = [self._outcomes[oid] for oid in outcome_ids if oid in self._outcomes]
+
+        evals = [
+            e for e in self._evaluations.values()
+            if e.model_id == model_id and e.model_version == model_version and e.domain_id == domain_id
+        ]
+
+        proposals = [
+            p for p in self._proposals.values()
+            if p.candidate_model_id == model_id and p.candidate_model_version == model_version and p.domain_id == domain_id
+        ]
+
+        decisions = []
+        for prop in proposals:
+            decisions.extend([d for d in self._decisions.values() if d.proposal_id == prop.id])
+
+        obs = [
+            o for o in self._activation_observations
+            if o.model_id == model_id and o.model_version == model_version and o.domain_id == domain_id
+        ]
+
+        # Transfer lineage check
+        transfer_info = None
+        if candidate and candidate.transfer_proposal_id:
+            t_prop = self._transfer_proposals.get(candidate.transfer_proposal_id)
+            t_compat = self._transfer_compatibility.get(candidate.transfer_proposal_id)
+            t_dec = next((d for d in self._transfer_decisions.values() if d.proposal_id == candidate.transfer_proposal_id), None)
+            transfer_info = {
+                "source_domain": t_prop.source_domain if t_prop else "unknown",
+                "transfer_proposal_id": candidate.transfer_proposal_id,
+                "transfer_type": t_prop.transfer_type.value if t_prop and hasattr(t_prop.transfer_type, "value") else str(getattr(t_prop, "transfer_type", "")),
+                "compatibility_score": t_compat.score if t_compat else None,
+                "compatibility_status": t_compat.status.value if t_compat and hasattr(t_compat.status, "value") else str(getattr(t_compat, "status", "")),
+                "transfer_decision": t_dec.decision if t_dec else None,
+                "decider_id": t_dec.decider_id if t_dec else None,
+            }
+
+        return {
+            "domain_id": domain_id,
+            "model_id": model_id,
+            "model_version": model_version,
+            "lifecycle_state": model_rec.lifecycle_state.value if model_rec and hasattr(model_rec.lifecycle_state, "value") else "registered",
+            "runtime_activation_state": model_rec.runtime_activation_state.value if model_rec and hasattr(model_rec.runtime_activation_state, "value") else "not_active",
+            "parent_model": {
+                "model_id": parent_id,
+                "model_version": parent_version,
+            } if parent_rec else None,
+            "candidate": {
+                "id": candidate.id,
+                "parameter_fingerprint": candidate.parameter_fingerprint,
+                "creation_seed": candidate.creation_seed,
+            } if candidate else None,
+            "learning_events_count": len(learning_events),
+            "learning_event_ids": [e.id for e in learning_events],
+            "feedback_count": len(feedback_records),
+            "feedback_ids": [f.id for f in feedback_records],
+            "outcome_count": len(outcome_records),
+            "outcome_ids": [o.id for o in outcome_records],
+            "evaluations_count": len(evals),
+            "evaluations": [{"id": e.id, "metrics": e.metrics, "sample_count": e.sample_count} for e in evals],
+            "promotion_proposals_count": len(proposals),
+            "promotion_proposals": [{"id": p.id, "recommendation": p.recommendation, "metric_deltas": p.metric_deltas} for p in proposals],
+            "promotion_decisions_count": len(decisions),
+            "promotion_decisions": [{"id": d.id, "decision": d.decision, "decider_id": d.decider_id} for d in decisions],
+            "activation_observations_count": len(obs),
+            "activation_observations": [{"id": o.id, "activation_type": o.activation_type, "external_actor_id": o.external_actor_id, "observed_at": o.observed_at} for o in obs],
+            "transfer_lineage": transfer_info,
+            "authority": "NONE",
+        }
+
+    # --- AL3 Drift to Governance Integration ---
+
+    def propose_drift_remediation(
+        self,
+        drift_report: DriftReport,
+        dataset: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Convert detected drift into advisory remediation proposals.
+
+        CRITICAL ARCHITECTURAL GUARANTEE:
+        Drift detection NEVER autonomously replaces or activates a model.
+        It generates factual advisory recommendations for governance review.
+        """
+        remediation: dict[str, Any] = {
+            "domain_id": drift_report.domain_id,
+            "model_id": drift_report.model_id,
+            "drift_type": drift_report.drift_type.value if hasattr(drift_report.drift_type, "value") else str(drift_report.drift_type),
+            "drift_magnitude": drift_report.drift_magnitude,
+            "drift_detected": drift_report.drift_detected,
+            "recommendation": drift_report.recommendation,
+            "authority": "NONE",
+        }
+
+        if drift_report.drift_detected:
+            if drift_report.drift_magnitude > 0.3:
+                remediation["governance_action"] = "RECOMMEND_DOMAIN_FREEZE"
+                remediation["freeze_proposal"] = {
+                    "mode": DomainFreezeMode.FROZEN.value,
+                    "reason": f"Severe {drift_report.drift_type.value} drift magnitude ({drift_report.drift_magnitude}) exceeds safe operating threshold",
+                }
+            else:
+                remediation["governance_action"] = "PROPOSE_MODEL_REEVALUATION"
+                remediation["reevaluation_proposal"] = {
+                    "reason": f"Moderate {drift_report.drift_type.value} drift ({drift_report.drift_magnitude}); re-evaluation and candidate retraining recommended",
+                }
+        else:
+            remediation["governance_action"] = "MONITORING_NORMAL"
+
+        return remediation
